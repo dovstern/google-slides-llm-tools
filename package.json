@@ -1,6 +1,6 @@
 {
   "name": "google-slides-mcp",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "MCP server for Google Slides LLM tools",
   "bin": {
     "google-slides-mcp": "./bin/run.js"
