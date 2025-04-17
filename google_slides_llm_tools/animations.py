@@ -1,22 +1,22 @@
-from ..auth import get_slides_service
-from langchain.tools import tool
+from google_slides_llm_tools.auth import get_slides_service
+import time
 import os
 import tempfile
 
-@tool
-def set_slide_transition(credentials, presentation_id, slide_id, transition_type, duration=1):
+def set_slide_transition(credentials, presentation_id, slide_id, transition_type="FADE", duration_ms=500):
     """
-    Sets a transition effect for a slide.
+    Sets the transition effect for a slide.
     
     Args:
         credentials: Authorized Google credentials
         presentation_id (str): ID of the presentation
         slide_id (str): ID of the slide
-        transition_type (str): Type of transition (e.g., 'FADE', 'SLIDE', 'CUBE')
-        duration (float, optional): Duration of the transition in seconds
+        transition_type (str, optional): Type of transition effect. Options include: 
+            'FADE', 'SLIDE', 'WIPE', 'CHECKERBOARD', etc.
+        duration_ms (int, optional): Duration of the transition in milliseconds
         
     Returns:
-        dict: Response from the API with paths to PDFs of the presentation and the slide
+        dict: Response from the API
     """
     service = get_slides_service(credentials)
     
@@ -29,7 +29,7 @@ def set_slide_transition(credentials, presentation_id, slide_id, transition_type
                     'pageTransition': {
                         'type': transition_type,
                         'duration': {
-                            'seconds': duration
+                            'milliseconds': duration_ms
                         }
                     }
                 },
@@ -53,7 +53,7 @@ def set_slide_transition(credentials, presentation_id, slide_id, transition_type
             break
     
     # Export presentation as PDF
-    from ..export import export_presentation_as_pdf, export_slide_as_pdf
+    from google_slides_llm_tools.export import export_presentation_as_pdf, export_slide_as_pdf
     presentation_pdf_path = os.path.join(tempfile.gettempdir(), f"presentation_{presentation_id}.pdf")
     export_presentation_as_pdf(credentials, presentation_id, presentation_pdf_path)
     
@@ -70,25 +70,25 @@ def set_slide_transition(credentials, presentation_id, slide_id, transition_type
     
     return response
 
-@tool
-def set_element_animation(credentials, presentation_id, slide_id, element_id, animation_type, start_time=0, duration=1):
+def set_element_animation(credentials, presentation_id, slide_id, element_id, animation_type, 
+                         start_on="ON_CLICK", duration_ms=500, order=None):
     """
-    Sets an animation for a slide element.
-    
-    Note: The Google Slides API doesn't directly support animations at the element level yet.
-    This function is a placeholder for future API capabilities.
+    Adds an animation effect to an element on a slide.
     
     Args:
         credentials: Authorized Google credentials
         presentation_id (str): ID of the presentation
-        slide_id (str): ID of the slide containing the element
+        slide_id (str): ID of the slide
         element_id (str): ID of the element to animate
-        animation_type (str): Type of animation (e.g., 'FADE_IN', 'FLY_IN')
-        start_time (float, optional): Start time of the animation in seconds
-        duration (float, optional): Duration of the animation in seconds
+        animation_type (str): Type of animation effect. Options include:
+            'APPEAR', 'FADE_IN', 'FLY_IN', etc.
+        start_on (str, optional): Trigger for the animation. Options:
+            'ON_CLICK', 'WITH_PREVIOUS', 'AFTER_PREVIOUS'
+        duration_ms (int, optional): Duration of the animation in milliseconds
+        order (int, optional): Order of the animation in the sequence
         
     Returns:
-        dict: Response from the API or a message about the limitation, with paths to PDFs
+        dict: Response from the API
     """
     # This is a placeholder as the Google Slides API doesn't fully support
     # element-level animations through the API yet
@@ -110,7 +110,7 @@ def set_element_animation(credentials, presentation_id, slide_id, element_id, an
             break
     
     # Export presentation as PDF
-    from ..export import export_presentation_as_pdf, export_slide_as_pdf
+    from google_slides_llm_tools.export import export_presentation_as_pdf, export_slide_as_pdf
     presentation_pdf_path = os.path.join(tempfile.gettempdir(), f"presentation_{presentation_id}.pdf")
     export_presentation_as_pdf(credentials, presentation_id, presentation_pdf_path)
     
@@ -127,8 +127,7 @@ def set_element_animation(credentials, presentation_id, slide_id, element_id, an
     
     return message
 
-@tool
-def apply_auto_advance(credentials, presentation_id, slide_id, auto_advance_time):
+def apply_auto_advance(credentials, presentation_id, slide_id, auto_advance_after_ms):
     """
     Sets a slide to automatically advance after a specified time.
     
@@ -136,10 +135,10 @@ def apply_auto_advance(credentials, presentation_id, slide_id, auto_advance_time
         credentials: Authorized Google credentials
         presentation_id (str): ID of the presentation
         slide_id (str): ID of the slide
-        auto_advance_time (float): Time in seconds after which the slide should auto-advance
+        auto_advance_after_ms (int): Time in milliseconds after which to advance to the next slide
         
     Returns:
-        dict: Response from the API with paths to PDFs of the presentation and the slide
+        dict: Response from the API
     """
     service = get_slides_service(credentials)
     
@@ -150,7 +149,7 @@ def apply_auto_advance(credentials, presentation_id, slide_id, auto_advance_time
                 'objectId': slide_id,
                 'pageProperties': {
                     'autoAdvanceTime': {
-                        'seconds': auto_advance_time
+                        'milliseconds': auto_advance_after_ms
                     }
                 },
                 'fields': 'autoAdvanceTime'
@@ -173,7 +172,7 @@ def apply_auto_advance(credentials, presentation_id, slide_id, auto_advance_time
             break
     
     # Export presentation as PDF
-    from ..export import export_presentation_as_pdf, export_slide_as_pdf
+    from google_slides_llm_tools.export import export_presentation_as_pdf, export_slide_as_pdf
     presentation_pdf_path = os.path.join(tempfile.gettempdir(), f"presentation_{presentation_id}.pdf")
     export_presentation_as_pdf(credentials, presentation_id, presentation_pdf_path)
     
@@ -190,17 +189,22 @@ def apply_auto_advance(credentials, presentation_id, slide_id, auto_advance_time
     
     return response
 
-@tool
-def set_slide_background(credentials, presentation_id, slide_id, color=None, image_url=None):
+def set_slide_background(credentials, presentation_id, slide_id, background_type, background_value):
     """
-    Sets a background color or image for a slide.
+    Sets the background for a slide.
     
     Args:
         credentials: Authorized Google credentials
         presentation_id (str): ID of the presentation
         slide_id (str): ID of the slide
-        color (dict, optional): RGB color for the background (e.g., {'red': 0.9, 'green': 0.9, 'blue': 0.9})
-        image_url (str, optional): URL of an image to use as background
+        background_type (str): Type of background ('SOLID', 'GRADIENT', or 'IMAGE')
+        background_value: Value for the background, depends on type:
+            - For 'SOLID': RGB color (e.g., {'red': 0.9, 'green': 0.9, 'blue': 0.9})
+            - For 'GRADIENT': Dict with start and end colors and angle (e.g., 
+              {'startColor': {'red': 1, 'green': 0, 'blue': 0}, 
+               'endColor': {'red': 0, 'green': 0, 'blue': 1}, 
+               'angle': 45})
+            - For 'IMAGE': URL of the image
         
     Returns:
         dict: Response from the API with paths to PDFs of the presentation and the slide
@@ -208,22 +212,28 @@ def set_slide_background(credentials, presentation_id, slide_id, color=None, ima
     service = get_slides_service(credentials)
     
     # Create the request based on whether we're setting a color or image background
-    if color is not None:
+    if background_type == 'SOLID':
         background = {
             'solidFill': {
-                'color': {
-                    'rgbColor': color
-                }
+                'color': background_value
             }
         }
-    elif image_url is not None:
+    elif background_type == 'GRADIENT':
+        background = {
+            'gradientFill': {
+                'startColor': background_value['startColor'],
+                'endColor': background_value['endColor'],
+                'angle': background_value['angle']
+            }
+        }
+    elif background_type == 'IMAGE':
         background = {
             'stretchedPictureFill': {
-                'contentUrl': image_url
+                'contentUrl': background_value
             }
         }
     else:
-        error_response = {"error": "Either color or image_url must be provided"}
+        error_response = {"error": "Invalid background type"}
         return error_response
     
     # Create the request to set background
@@ -254,7 +264,7 @@ def set_slide_background(credentials, presentation_id, slide_id, color=None, ima
             break
     
     # Export presentation as PDF
-    from ..export import export_presentation_as_pdf, export_slide_as_pdf
+    from google_slides_llm_tools.export import export_presentation_as_pdf, export_slide_as_pdf
     presentation_pdf_path = os.path.join(tempfile.gettempdir(), f"presentation_{presentation_id}.pdf")
     export_presentation_as_pdf(credentials, presentation_id, presentation_pdf_path)
     
@@ -269,4 +279,4 @@ def set_slide_background(credentials, presentation_id, slide_id, color=None, ima
     if slide_pdf_path:
         response["slidePdfPath"] = slide_pdf_path
     
-    return response
+    return response 

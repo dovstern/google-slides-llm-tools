@@ -1,10 +1,8 @@
-from ..auth import get_slides_service
-from langchain.tools import tool
+from google_slides_llm_tools.auth import get_slides_service
 import time
 import os
 import tempfile
 
-@tool
 def add_image_to_slide(credentials, presentation_id, slide_id, image_url, x, y, width, height):
     """
     Adds an image to a slide from a URL.
@@ -66,7 +64,7 @@ def add_image_to_slide(credentials, presentation_id, slide_id, image_url, x, y, 
             break
     
     # Export presentation as PDF
-    from ..export import export_presentation_as_pdf, export_slide_as_pdf
+    from google_slides_llm_tools.export import export_presentation_as_pdf, export_slide_as_pdf
     presentation_pdf_path = os.path.join(tempfile.gettempdir(), f"presentation_{presentation_id}.pdf")
     export_presentation_as_pdf(credentials, presentation_id, presentation_pdf_path)
     
@@ -83,7 +81,6 @@ def add_image_to_slide(credentials, presentation_id, slide_id, image_url, x, y, 
     
     return response
 
-@tool
 def add_video_to_slide(credentials, presentation_id, slide_id, video_url, x, y, width, height, 
                       auto_play=False, start_time=0, end_time=None, mute=False):
     """
@@ -164,7 +161,7 @@ def add_video_to_slide(credentials, presentation_id, slide_id, video_url, x, y, 
             break
     
     # Export presentation as PDF
-    from ..export import export_presentation_as_pdf, export_slide_as_pdf
+    from google_slides_llm_tools.export import export_presentation_as_pdf, export_slide_as_pdf
     presentation_pdf_path = os.path.join(tempfile.gettempdir(), f"presentation_{presentation_id}.pdf")
     export_presentation_as_pdf(credentials, presentation_id, presentation_pdf_path)
     
@@ -181,7 +178,6 @@ def add_video_to_slide(credentials, presentation_id, slide_id, video_url, x, y, 
     
     return response
 
-@tool
 def insert_audio_link(credentials, presentation_id, slide_id, audio_url, x, y, width, height, link_text="Play Audio"):
     """
     Inserts a text box with a hyperlink to an external audio file.
@@ -249,7 +245,7 @@ def insert_audio_link(credentials, presentation_id, slide_id, audio_url, x, y, w
                             'rgbColor': {
                                 'red': 0,
                                 'green': 0,
-                                'blue': 1
+                                'blue': 0.8
                             }
                         }
                     }
@@ -274,7 +270,7 @@ def insert_audio_link(credentials, presentation_id, slide_id, audio_url, x, y, w
             break
     
     # Export presentation as PDF
-    from ..export import export_presentation_as_pdf, export_slide_as_pdf
+    from google_slides_llm_tools.export import export_presentation_as_pdf, export_slide_as_pdf
     presentation_pdf_path = os.path.join(tempfile.gettempdir(), f"presentation_{presentation_id}.pdf")
     export_presentation_as_pdf(credentials, presentation_id, presentation_pdf_path)
     
@@ -291,7 +287,6 @@ def insert_audio_link(credentials, presentation_id, slide_id, audio_url, x, y, w
     
     return response
 
-@tool
 def add_shape_to_slide(credentials, presentation_id, slide_id, shape_type, x, y, width, height, fill_color=None):
     """
     Adds a shape to a slide.
@@ -305,7 +300,7 @@ def add_shape_to_slide(credentials, presentation_id, slide_id, shape_type, x, y,
         y (float): Y coordinate (in points) of the shape's top-left corner
         width (float): Width of the shape (in points)
         height (float): Height of the shape (in points)
-        fill_color (dict, optional): Fill color as an RGB dict (e.g., {'red': 0, 'green': 0, 'blue': 0})
+        fill_color (dict, optional): RGB color for the shape (e.g., {'red': 0.9, 'green': 0.9, 'blue': 0.9})
         
     Returns:
         dict: Response from the API with paths to PDFs of the presentation and the slide
@@ -315,33 +310,36 @@ def add_shape_to_slide(credentials, presentation_id, slide_id, shape_type, x, y,
     # Generate a unique ID for the shape
     shape_id = f'Shape_{int(time.time())}'
     
-    # Create request to add a shape
-    request = {
-        'createShape': {
-            'objectId': shape_id,
-            'shapeType': shape_type,
-            'elementProperties': {
-                'pageObjectId': slide_id,
-                'size': {
-                    'height': {'magnitude': height, 'unit': 'PT'},
-                    'width': {'magnitude': width, 'unit': 'PT'},
-                },
-                'transform': {
-                    'scaleX': 1,
-                    'scaleY': 1,
-                    'translateX': x,
-                    'translateY': y,
-                    'unit': 'PT'
-                }
-            }
+    # Prepare the shape properties
+    element_properties = {
+        'pageObjectId': slide_id,
+        'size': {
+            'height': {'magnitude': height, 'unit': 'PT'},
+            'width': {'magnitude': width, 'unit': 'PT'},
+        },
+        'transform': {
+            'scaleX': 1,
+            'scaleY': 1,
+            'translateX': x,
+            'translateY': y,
+            'unit': 'PT'
         }
     }
     
-    requests = [request]
+    # Create the request to add a shape
+    requests = [
+        {
+            'createShape': {
+                'objectId': shape_id,
+                'shapeType': shape_type,
+                'elementProperties': element_properties
+            }
+        }
+    ]
     
     # Add fill color if specified
     if fill_color is not None:
-        fill_request = {
+        requests.append({
             'updateShapeProperties': {
                 'objectId': shape_id,
                 'fields': 'shapeBackgroundFill.solidFill.color',
@@ -355,8 +353,7 @@ def add_shape_to_slide(credentials, presentation_id, slide_id, shape_type, x, y,
                     }
                 }
             }
-        }
-        requests.append(fill_request)
+        })
     
     body = {'requests': requests}
     response = service.presentations().batchUpdate(
@@ -373,7 +370,7 @@ def add_shape_to_slide(credentials, presentation_id, slide_id, shape_type, x, y,
             break
     
     # Export presentation as PDF
-    from ..export import export_presentation_as_pdf, export_slide_as_pdf
+    from google_slides_llm_tools.export import export_presentation_as_pdf, export_slide_as_pdf
     presentation_pdf_path = os.path.join(tempfile.gettempdir(), f"presentation_{presentation_id}.pdf")
     export_presentation_as_pdf(credentials, presentation_id, presentation_pdf_path)
     
@@ -388,4 +385,4 @@ def add_shape_to_slide(credentials, presentation_id, slide_id, shape_type, x, y,
     if slide_pdf_path:
         response["slidePdfPath"] = slide_pdf_path
     
-    return response
+    return response 

@@ -1,19 +1,19 @@
-from ..auth import get_drive_service, get_slides_service
-from langchain.tools import tool
+from google_slides_llm_tools.auth import get_drive_service, get_slides_service
 import os
+import base64
 
-@tool
-def export_presentation_as_pdf(credentials, presentation_id, output_path):
+def export_presentation_as_pdf(credentials, presentation_id, output_path=None):
     """
     Exports a Google Slides presentation as a PDF file.
     
     Args:
         credentials: Authorized Google credentials
         presentation_id (str): ID of the presentation to export
-        output_path (str): Path to save the exported PDF
+        output_path (str, optional): Path to save the exported PDF
         
     Returns:
-        str: Path to the exported PDF file
+        tuple: (content, artifact) where content is a message string and 
+               artifact is the PDF data URL or file path
     """
     drive_service = get_drive_service(credentials)
     
@@ -23,14 +23,23 @@ def export_presentation_as_pdf(credentials, presentation_id, output_path):
         mimeType='application/pdf'
     )
     
-    # Write the PDF to the specified path
-    with open(output_path, 'wb') as pdf_file:
-        pdf_file.write(request.execute())
+    # Get PDF content
+    pdf_content = request.execute()
     
-    return output_path
+    # If output path is provided, save to file
+    if output_path:
+        with open(output_path, 'wb') as pdf_file:
+            pdf_file.write(pdf_content)
+        content = f"Presentation exported as PDF to {output_path}"
+        return content, output_path
+    
+    # Otherwise, encode as base64 and return as data URL
+    base64_pdf = base64.b64encode(pdf_content).decode('utf-8')
+    data_url = f"data:application/pdf;base64,{base64_pdf}"
+    content = "Presentation exported as PDF"
+    return content, data_url
 
-@tool
-def export_slide_as_pdf(credentials, presentation_id, slide_index, output_path):
+def export_slide_as_pdf(credentials, presentation_id, slide_index, output_path=None):
     """
     Exports a specific slide from a Google Slides presentation as a PDF.
     
@@ -42,10 +51,11 @@ def export_slide_as_pdf(credentials, presentation_id, slide_index, output_path):
         credentials: Authorized Google credentials
         presentation_id (str): ID of the original presentation
         slide_index (int): Index of the slide to export (0-based)
-        output_path (str): Path to save the exported PDF
+        output_path (str, optional): Path to save the exported PDF
         
     Returns:
-        str: Path to the exported PDF file
+        tuple: (content, artifact) where content is a message string and 
+               artifact is the PDF data URL or file path
     """
     drive_service = get_drive_service(credentials)
     slides_service = get_slides_service(credentials)
@@ -94,17 +104,26 @@ def export_slide_as_pdf(credentials, presentation_id, slide_index, output_path):
             mimeType='application/pdf'
         )
         
-        # Write the PDF to the specified path
-        with open(output_path, 'wb') as pdf_file:
-            pdf_file.write(request.execute())
+        # Get PDF content
+        pdf_content = request.execute()
         
-        return output_path
+        # If output path is provided, save to file
+        if output_path:
+            with open(output_path, 'wb') as pdf_file:
+                pdf_file.write(pdf_content)
+            content = f"Slide {slide_index + 1} exported as PDF to {output_path}"
+            return content, output_path
+        
+        # Otherwise, encode as base64 and return as data URL
+        base64_pdf = base64.b64encode(pdf_content).decode('utf-8')
+        data_url = f"data:application/pdf;base64,{base64_pdf}"
+        content = f"Slide {slide_index + 1} exported as PDF"
+        return content, data_url
     
     finally:
         # Step 7: Clean up by deleting the copied presentation
         drive_service.files().delete(fileId=copied_presentation_id).execute()
 
-@tool
 def get_presentation_thumbnail(credentials, presentation_id, slide_index=0, output_path=None):
     """
     Gets a thumbnail image of a specific slide in a presentation.
@@ -116,7 +135,8 @@ def get_presentation_thumbnail(credentials, presentation_id, slide_index=0, outp
         output_path (str, optional): Path to save the thumbnail image
         
     Returns:
-        str: Path to the thumbnail image, or the thumbnail data if no output_path provided
+        tuple: (content, artifact) where content is a message string and 
+               artifact is the image data URL or file path
     """
     slides_service = get_slides_service(credentials)
     
@@ -146,6 +166,13 @@ def get_presentation_thumbnail(credentials, presentation_id, slide_index=0, outp
         response = requests.get(thumbnail_url)
         with open(output_path, 'wb') as image_file:
             image_file.write(response.content)
-        return output_path
+        content = f"Thumbnail of slide {slide_index + 1} saved to {output_path}"
+        return content, output_path
     
-    return thumbnail_url
+    # Otherwise, download the image and encode it as base64
+    import requests
+    response = requests.get(thumbnail_url)
+    base64_image = base64.b64encode(response.content).decode('utf-8')
+    data_url = f"data:image/png;base64,{base64_image}"
+    content = f"Thumbnail of slide {slide_index + 1}"
+    return content, data_url 

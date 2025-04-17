@@ -1,26 +1,28 @@
-from ..auth import get_slides_service
-from langchain.tools import tool
+from google_slides_llm_tools.auth import get_slides_service
 import time
 import os
 import tempfile
 
-@tool
-def add_text_to_slide(credentials, presentation_id, slide_id, text, x, y, width, height):
+def add_text_to_slide(credentials, presentation_id, slide_id, text, position=None):
     """
-    Adds a text box with the specified text to a slide.
+    Adds text to a slide.
     
     Args:
         credentials: Authorized Google credentials
         presentation_id (str): ID of the presentation
         slide_id (str): ID of the slide
-        text (str): Text to add to the slide
-        x (float): X coordinate (in points) of the text box's top-left corner
-        y (float): Y coordinate (in points) of the text box's top-left corner
-        width (float): Width of the text box (in points)
-        height (float): Height of the text box (in points)
+        text (str): Text content to add
+        position (dict, optional): Position and size of the text box. Format:
+            {
+                'x': float, # X coordinate (in points) of the text box's top-left corner
+                'y': float, # Y coordinate (in points) of the text box's top-left corner
+                'width': float, # Width of the text box (in points)
+                'height': float # Height of the text box (in points)
+            }
+            If None, a default text box will be created
         
     Returns:
-        dict: Response from the API with paths to PDFs of the presentation and the specific slide
+        dict: Response from the API with paths to PDFs of the presentation and the slide
     """
     service = get_slides_service(credentials)
     
@@ -36,14 +38,14 @@ def add_text_to_slide(credentials, presentation_id, slide_id, text, x, y, width,
                 'elementProperties': {
                     'pageObjectId': slide_id,
                     'size': {
-                        'height': {'magnitude': height, 'unit': 'PT'},
-                        'width': {'magnitude': width, 'unit': 'PT'},
+                        'height': {'magnitude': position['height'], 'unit': 'PT'},
+                        'width': {'magnitude': position['width'], 'unit': 'PT'},
                     },
                     'transform': {
                         'scaleX': 1,
                         'scaleY': 1,
-                        'translateX': x,
-                        'translateY': y,
+                        'translateX': position['x'],
+                        'translateY': position['y'],
                         'unit': 'PT'
                     }
                 }
@@ -72,7 +74,7 @@ def add_text_to_slide(credentials, presentation_id, slide_id, text, x, y, width,
             break
     
     # Export presentation as PDF
-    from ..export import export_presentation_as_pdf, export_slide_as_pdf
+    from google_slides_llm_tools.export import export_presentation_as_pdf, export_slide_as_pdf
     presentation_pdf_path = os.path.join(tempfile.gettempdir(), f"presentation_{presentation_id}.pdf")
     export_presentation_as_pdf(credentials, presentation_id, presentation_pdf_path)
     
@@ -89,26 +91,27 @@ def add_text_to_slide(credentials, presentation_id, slide_id, text, x, y, width,
     
     return response
 
-@tool
-def update_text_style(credentials, presentation_id, shape_id, text_range_start_index, text_range_end_index, 
-                      bold=None, italic=None, font_size=None, font_family=None, color=None):
+def update_text_style(credentials, presentation_id, slide_object_id, text_style):
     """
-    Updates the style of text within a shape.
+    Updates the style of text in a text box or shape.
     
     Args:
         credentials: Authorized Google credentials
         presentation_id (str): ID of the presentation
-        shape_id (str): ID of the shape containing the text
-        text_range_start_index (int): Start index of the text range
-        text_range_end_index (int): End index of the text range
-        bold (bool, optional): Whether the text should be bold
-        italic (bool, optional): Whether the text should be italic
-        font_size (float, optional): Font size in points
-        font_family (str, optional): Font family (e.g., 'Arial')
-        color (dict, optional): Text color as an RGB dict (e.g., {'red': 0, 'green': 0, 'blue': 0})
+        slide_object_id (str): ID of the text box or shape containing the text
+        text_style (dict): Style to apply to the text. Format:
+            {
+                'fontFamily': str, # e.g., 'Arial'
+                'fontSize': int, # Point size
+                'bold': bool,
+                'italic': bool,
+                'underline': bool,
+                'foregroundColor': dict, # RGB color for the text (e.g., {'red': 0, 'green': 0, 'blue': 0})
+                'backgroundColor': dict # RGB color for highlighting (e.g., {'red': 1, 'green': 1, 'blue': 0})
+            }
         
     Returns:
-        dict: Response from the API with paths to PDFs of the updated presentation and slide
+        dict: Response from the API with paths to PDFs of the presentation and the slide
     """
     service = get_slides_service(credentials)
     
@@ -116,29 +119,29 @@ def update_text_style(credentials, presentation_id, shape_id, text_range_start_i
     style = {}
     fields = []
     
-    if bold is not None:
-        style['bold'] = bold
+    if text_style['bold']:
+        style['bold'] = True
         fields.append('bold')
         
-    if italic is not None:
-        style['italic'] = italic
+    if text_style['italic']:
+        style['italic'] = True
         fields.append('italic')
         
-    if font_size is not None:
+    if text_style['fontSize']:
         style['fontSize'] = {
-            'magnitude': font_size,
+            'magnitude': text_style['fontSize'],
             'unit': 'PT'
         }
         fields.append('fontSize')
         
-    if font_family is not None:
-        style['fontFamily'] = font_family
+    if text_style['fontFamily']:
+        style['fontFamily'] = text_style['fontFamily']
         fields.append('fontFamily')
         
-    if color is not None:
+    if text_style['foregroundColor']:
         style['foregroundColor'] = {
             'opaqueColor': {
-                'rgbColor': color
+                'rgbColor': text_style['foregroundColor']
             }
         }
         fields.append('foregroundColor')
@@ -147,12 +150,7 @@ def update_text_style(credentials, presentation_id, shape_id, text_range_start_i
     requests = [
         {
             'updateTextStyle': {
-                'objectId': shape_id,
-                'textRange': {
-                    'type': 'FIXED_RANGE',
-                    'startIndex': text_range_start_index,
-                    'endIndex': text_range_end_index
-                },
+                'objectId': slide_object_id,
                 'style': style,
                 'fields': ','.join(fields)
             }
@@ -170,14 +168,14 @@ def update_text_style(credentials, presentation_id, shape_id, text_range_start_i
     slide_index = None
     for i, slide in enumerate(presentation.get('slides', [])):
         for element in slide.get('pageElements', []):
-            if element.get('objectId') == shape_id:
+            if element.get('objectId') == slide_object_id:
                 slide_index = i
                 break
         if slide_index is not None:
             break
     
     # Export presentation as PDF
-    from ..export import export_presentation_as_pdf, export_slide_as_pdf
+    from google_slides_llm_tools.export import export_presentation_as_pdf, export_slide_as_pdf
     presentation_pdf_path = os.path.join(tempfile.gettempdir(), f"presentation_{presentation_id}.pdf")
     export_presentation_as_pdf(credentials, presentation_id, presentation_pdf_path)
     
@@ -194,28 +192,29 @@ def update_text_style(credentials, presentation_id, shape_id, text_range_start_i
     
     return response
 
-@tool
-def update_paragraph_style(credentials, presentation_id, shape_id, start_index, end_index, 
-                          alignment=None, line_spacing=None, space_above=None, space_below=None, 
-                          indent_start=None, indent_end=None):
+def update_paragraph_style(credentials, presentation_id, slide_object_id, paragraph_style):
     """
-    Updates the paragraph style within a shape.
+    Updates the paragraph style in a text box or shape.
     
     Args:
         credentials: Authorized Google credentials
         presentation_id (str): ID of the presentation
-        shape_id (str): ID of the shape containing the text
-        start_index (int): Start index of the paragraph
-        end_index (int): End index of the paragraph
-        alignment (str, optional): Text alignment ('START', 'CENTER', 'END', 'JUSTIFIED')
-        line_spacing (float, optional): Line spacing in points
-        space_above (float, optional): Space above the paragraph in points
-        space_below (float, optional): Space below the paragraph in points
-        indent_start (float, optional): Left indent in points
-        indent_end (float, optional): Right indent in points
+        slide_object_id (str): ID of the text box or shape containing the text
+        paragraph_style (dict): Style to apply to the paragraph. Format:
+            {
+                'alignment': str, # 'START', 'CENTER', 'END', or 'JUSTIFIED'
+                'lineSpacing': int, # In percentage (e.g., 150 for 1.5 line spacing)
+                'spaceAbove': float, # Space above in points
+                'spaceBelow': float, # Space below in points
+                'indentFirstLine': float, # First line indent in points
+                'indentStart': float, # Left indent in points
+                'indentEnd': float, # Right indent in points
+                'direction': str, # 'LEFT_TO_RIGHT', 'RIGHT_TO_LEFT'
+                'spacingMode': str # 'NEVER_COLLAPSE' or 'COLLAPSE_LISTS'
+            }
         
     Returns:
-        dict: Response from the API with paths to PDFs of the updated presentation and slide
+        dict: Response from the API with paths to PDFs of the presentation and the slide
     """
     service = get_slides_service(credentials)
     
@@ -223,38 +222,48 @@ def update_paragraph_style(credentials, presentation_id, shape_id, start_index, 
     style = {}
     fields = []
     
-    if alignment is not None:
-        style['alignment'] = alignment
+    if paragraph_style['alignment']:
+        style['alignment'] = paragraph_style['alignment']
         fields.append('alignment')
         
-    if line_spacing is not None:
-        style['lineSpacing'] = line_spacing
+    if paragraph_style['lineSpacing']:
+        style['lineSpacing'] = {
+            'magnitude': paragraph_style['lineSpacing'],
+            'unit': 'PERCENT'
+        }
         fields.append('lineSpacing')
         
-    if space_above is not None:
+    if paragraph_style['spaceAbove']:
         style['spaceAbove'] = {
-            'magnitude': space_above,
+            'magnitude': paragraph_style['spaceAbove'],
             'unit': 'PT'
         }
         fields.append('spaceAbove')
         
-    if space_below is not None:
+    if paragraph_style['spaceBelow']:
         style['spaceBelow'] = {
-            'magnitude': space_below,
+            'magnitude': paragraph_style['spaceBelow'],
             'unit': 'PT'
         }
         fields.append('spaceBelow')
         
-    if indent_start is not None:
+    if paragraph_style['indentFirstLine']:
+        style['indentFirstLine'] = {
+            'magnitude': paragraph_style['indentFirstLine'],
+            'unit': 'PT'
+        }
+        fields.append('indentFirstLine')
+        
+    if paragraph_style['indentStart']:
         style['indentStart'] = {
-            'magnitude': indent_start,
+            'magnitude': paragraph_style['indentStart'],
             'unit': 'PT'
         }
         fields.append('indentStart')
         
-    if indent_end is not None:
+    if paragraph_style['indentEnd']:
         style['indentEnd'] = {
-            'magnitude': indent_end,
+            'magnitude': paragraph_style['indentEnd'],
             'unit': 'PT'
         }
         fields.append('indentEnd')
@@ -263,12 +272,7 @@ def update_paragraph_style(credentials, presentation_id, shape_id, start_index, 
     requests = [
         {
             'updateParagraphStyle': {
-                'objectId': shape_id,
-                'textRange': {
-                    'type': 'FIXED_RANGE',
-                    'startIndex': start_index,
-                    'endIndex': end_index
-                },
+                'objectId': slide_object_id,
                 'style': style,
                 'fields': ','.join(fields)
             }
@@ -286,14 +290,14 @@ def update_paragraph_style(credentials, presentation_id, shape_id, start_index, 
     slide_index = None
     for i, slide in enumerate(presentation.get('slides', [])):
         for element in slide.get('pageElements', []):
-            if element.get('objectId') == shape_id:
+            if element.get('objectId') == slide_object_id:
                 slide_index = i
                 break
         if slide_index is not None:
             break
     
     # Export presentation as PDF
-    from ..export import export_presentation_as_pdf, export_slide_as_pdf
+    from google_slides_llm_tools.export import export_presentation_as_pdf, export_slide_as_pdf
     presentation_pdf_path = os.path.join(tempfile.gettempdir(), f"presentation_{presentation_id}.pdf")
     export_presentation_as_pdf(credentials, presentation_id, presentation_pdf_path)
     
@@ -308,4 +312,4 @@ def update_paragraph_style(credentials, presentation_id, shape_id, start_index, 
     if slide_pdf_path:
         response["slidePdfPath"] = slide_pdf_path
     
-    return response
+    return response 

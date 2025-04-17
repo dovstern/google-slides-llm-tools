@@ -1,0 +1,23 @@
+{
+  "name": "google-slides-llm-tools-mcp",
+  "version": "0.2.0",
+  "description": "MCP server for Google Slides LLM tools",
+  "bin": {
+    "google-slides-mcp": "./bin/run.js"
+  },
+  "scripts": {
+    "start": "node ./bin/run.js"
+  },
+  "keywords": [
+    "MCP",
+    "Google Slides",
+    "LLM",
+    "Claude",
+    "Anthropic"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "dependencies": {
+    "cross-spawn": "^7.0.3"
+  }
+} 
