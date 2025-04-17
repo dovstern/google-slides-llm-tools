@@ -1,0 +1,24 @@
+name: NPM package tests
+
+on:
+  pull_request:
+    branches: [ "*" ]
+  push:
+    branches: [ "main", "master" ]
+
+jobs:
+  npm-smoke-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: google-slides-llm-tools-mcp
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install npm dependencies
+        run: npm install
+      - name: CLI smoke test
+        run: npx google-slides-mcp --help 
