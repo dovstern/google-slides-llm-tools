@@ -64,7 +64,7 @@ pythonProcess.on('error', (err) => {
   console.error('\x1b[31mFailed to start Python server process:\x1b[0m', err);
   console.error('\n\x1b[33mTroubleshooting:\x1b[0m'); // Explicitly reset color
   console.error(`  - Ensure Python 3.8+ is installed and accessible via the '${pythonExecutable}' command.`);
-  console.error('  - Ensure the 'google-slides-llm-tools' Python package is installed in the environment where Python runs (`pip install google-slides-llm-tools`).');
+  console.error("  - Ensure the 'google-slides-llm-tools' Python package is installed in the environment where Python runs (`pip install google-slides-llm-tools`).");
   process.exit(1);
 });
 
