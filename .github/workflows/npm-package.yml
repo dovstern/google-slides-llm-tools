@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: google-slides-llm-tools-mcp
+        working-directory: google-slides-mcp
     steps:
       - uses: actions/checkout@v4
       - name: Set up Node.js
