@@ -1,6 +1,6 @@
 # Google Slides LLM Tools
 
-A Python package providing tools for LLMs to interact with Google Slides, supporting both LangChain tools and MCP (Model Context Protocol) server functionality for integration with various LLM clients and agents.
+A Python package providing tools for LLMs to interact with Google Slides, supporting both LangChain tools and an MCP (Model Context Protocol) server for integration with various LLM clients and agents. This project also includes a Node.js CLI wrapper (`google-slides-mcp`) for easy server startup via `npx`.
 
 ## Features
 
@@ -10,143 +10,129 @@ A Python package providing tools for LLMs to interact with Google Slides, suppor
 - Manage collaboration and sharing
 - Set animations and transitions
 - Export presentations to various formats
-- Integration with both LangChain and MCP server
+- Integration with both LangChain and MCP server (Python or via Node.js CLI)
 
 ---
 
-## Guide 1: Using the MCP Server
+## MCP Server (Node.js CLI Wrapper)
 
-This guide explains how to set up and run the MCP (Model Context Protocol) server using `npx`, allowing LLM clients like Claude or Cursor to interact with Google Slides.
+The MCP server enables LLM clients (like Cursor, Claude Desktop, etc.) to interact with Google Slides via a local HTTP server. You can run the server directly using the Node.js CLI wrapper, which launches the Python backend for you.
 
 ### Prerequisites
 
-* Node.js and npm (Node Package Manager) installed
-* A Google Cloud project with the Google Slides API and Google Drive API enabled. Go to the [Google Cloud Console](https://console.cloud.google.com/) to enable them for your project if needed.
-* Google Cloud authentication credentials (either OAuth credentials or service account key)
+- **Node.js and npm:** Required for the CLI wrapper. [Download](https://nodejs.org/)
+- **Python 3.8+**: Required for the backend. [Download](https://www.python.org/)
+- **google-slides-llm-tools Python Package:**
+    ```bash
+    pip install google-slides-llm-tools
+    ```
+- **Google Cloud Credentials:** (see Authentication below)
 
-### Installation & Setup
+### Installation & Quick Start
 
-No installation required - you'll run the server directly with `npx`.
+No installation is required for the CLI wrapper; just use `npx`:
+
+```bash
+# Using Application Default Credentials (ADC) - Recommended
+npx google-slides-mcp --use-adc --project YOUR_PROJECT_ID
+
+# OR Using a Credentials File (OAuth or Service Account JSON)
+npx google-slides-mcp --credentials /path/to/your/credentials.json
+```
+
+The server will start on port 8000 by default. Connect your MCP client (e.g., Cursor, Claude) to `http://localhost:8000`.
 
 ### Authentication Setup
 
-Before running the server, you need to set up authentication with Google Cloud to access the Slides and Drive APIs:
+Choose one method:
 
-**Method 1: Using OAuth Credentials**
+#### Method 1: Application Default Credentials (ADC) - Recommended
 
-1. **Create OAuth Credentials:**
-   * Go to the [Google Cloud Console](https://console.cloud.google.com/)
-   * Navigate to "APIs & Services" → "Credentials"
-   * Create an OAuth 2.0 Client ID (Desktop application type)
-   * Download the credentials JSON file to a secure location on your computer
+1. **Install Google Cloud SDK:** [Instructions](https://cloud.google.com/sdk/docs/install)
+2. **Login via `gcloud`:**
+    ```bash
+    gcloud auth application-default login --scopes=openid,https://www.googleapis.com/auth/userinfo.email,https://www.googleapis.com/auth/cloud-platform,https://www.googleapis.com/auth/presentations,https://www.googleapis.com/auth/drive
+    gcloud auth application-default set-quota-project YOUR_PROJECT_ID
+    ```
+3. **Run the server:**
+    ```bash
+    npx google-slides-mcp --use-adc --project YOUR_PROJECT_ID
+    ```
 
-**Method 2: Using Service Account**
+#### Method 2: Credentials File (OAuth or Service Account)
 
-1. **Create Service Account Key:**
-   * Go to the [Google Cloud Console](https://console.cloud.google.com/)
-   * Navigate to "IAM & Admin" → "Service Accounts"
-   * Create a service account or use an existing one
-   * Create a new key (JSON format) and download it to a secure location
-   * Ensure the service account has appropriate roles for Google Slides and Drive
+1. **Create/Download Credentials:**
+    - Go to the [Google Cloud Console](https://console.cloud.google.com/) → APIs & Services → Credentials
+    - Create an OAuth 2.0 Client ID (Desktop app) or Service Account Key (JSON)
+    - Download the JSON file
+2. **Run the server:**
+    ```bash
+    npx google-slides-mcp --credentials /path/to/your/credentials.json
+    ```
 
-### Running the Server
+### Command-Line Options
 
-Run the MCP server using `npx` and point it to your credentials file:
+```
+Usage: google-slides-mcp [options]
 
-```bash
-npx google-slides-llm-tools-mcp --credentials /path/to/your/credentials.json
+Options:
+  -V, --version                   output the version number
+  --credentials <path>            Path to Google OAuth credentials JSON file
+  --use-adc                       Use Application Default Credentials (gcloud auth application-default login)
+  --project <id>                  Google Cloud project ID to use for ADC
+  -p, --port <number>             Port to run the server on (default: "8000")
+  -h, --help                      display help for command
 ```
 
-Replace `/path/to/your/credentials.json` with the actual path to your OAuth credentials or service account key file.
+### Usage with Clients
 
-#### Additional Options
+#### Cursor / Generic Clients
+1. Start the server as above.
+2. Note the URL and port (e.g., `http://localhost:8000`).
+3. Provide this URL to your client when configuring the MCP endpoint.
 
-* **Specify port:** By default, the server runs on port 8000. To use a different port:
-  ```bash
-  npx google-slides-llm-tools-mcp --credentials /path/to/your/credentials.json --port 8001
-  ```
+#### Claude Desktop
+1. Locate the Claude Desktop configuration file (e.g., `~/Library/Application Support/Claude/claude_desktop_config.json`).
+2. Edit the `mcpServers` section:
+    ```json
+    {
+      "mcpServers": {
+        "google-slides": {
+          "command": "npx",
+          "args": [
+            "google-slides-mcp",
+            "--credentials", // or --use-adc
+            "/path/to/your/google_credentials.json" // or --project YOUR_PROJECT_ID if using ADC
+          ]
+        }
+      }
+    }
+    ```
+3. Replace the arguments as needed for your authentication method.
+4. Restart Claude Desktop.
 
-* **Using ADC (Application Default Credentials):** If you've configured ADC using the Google Cloud SDK:
-  ```bash
-  npx google-slides-llm-tools-mcp --use-adc
-  ```
+### Programmatic Usage (Node.js)
 
-### Connecting Clients
-
-Once the server is running, connect your LLM client:
-
-#### Connecting Cursor (and similar Generic Clients)
-
-1. Note the URL and port the server is running on (e.g., `http://localhost:8000` if running locally on the default port)
-2. In your LLM client (like Cursor), provide this URL when prompted for an MCP server address or tool provider endpoint
-3. The LLM assistant should then be able to discover and utilize the Google Slides tools exposed by the server
-
-#### Connecting Claude Desktop
-
-Claude Desktop can also use the MCP server through its configuration:
-
-1. **Locate the Claude Desktop configuration file:**
-   * macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
-   * Windows: `C:\Users\USERNAME\AppData\Roaming\Claude\claude_desktop_config.json`
-
-2. **Edit the configuration file:**
-   ```json
-   {
-     "mcpServers": {
-       "google-slides": {
-         "command": "npx",
-         "args": [
-           "google-slides-llm-tools-mcp",
-           "--credentials",
-           "/path/to/your/google_credentials.json"
-         ]
-       }
-     }
-   }
-   ```
-   Replace `/path/to/your/google_credentials.json` with the actual path to your credentials file. You can also use `--use-adc` instead of `--credentials` if you prefer using Application Default Credentials.
-
-3. **Restart Claude Desktop.**
-
-### Debugging Common Server/API Issues
-
-If you encounter errors, especially `403 Forbidden` errors when the server tries to call Google APIs:
-
-1. **APIs Enabled:** Double-check that both the Google Slides API and Google Drive API are enabled for your Google Cloud Project in the [Cloud Console](https://console.developers.google.com/apis/dashboard).
-
-2. **Credentials:**
-   * Verify the path to your credentials file is correct
-   * Ensure the credentials have the necessary scopes:
-     * `https://www.googleapis.com/auth/presentations`
-     * `https://www.googleapis.com/auth/drive` 
-   * If using a service account, ensure it has appropriate permissions
-
-3. **Project ID:** If using `--use-adc`, you might need to explicitly set the project ID:
-   ```bash
-   npx google-slides-llm-tools-mcp --use-adc --project YOUR_PROJECT_ID
-   ```
-
-### Advanced: Programmatic Usage
-
-For advanced users who want to use the MCP server programmatically (e.g., from Node.js):
+You can also start the server programmatically from Node.js:
 
 ```javascript
-const { startServer } = require('google-slides-llm-tools-mcp');
+const { startServer } = require('google-slides-mcp');
 
-startServer({
-  port: 8000,
-  credentials: '/path/to/your/credentials.json',
-  // Or useAdc: true
-}).then(() => {
-  console.log('Server started successfully');
-}).catch(error => {
-  console.error('Failed to start server:', error);
+startServer({ 
+    port: 8001,
+    credentials: '/path/to/creds.json' 
+    // or useAdc: true, project: 'your-project-id'
+}).then(childProcess => {
+    console.log('MCP Server process started (PID: ', childProcess.pid, ')');
+    // You can interact with childProcess if needed (e.g., childProcess.kill())
+}).catch(err => {
+    console.error('Failed to start server:', err);
 });
 ```
 
-*Note: This advanced usage requires installing the package with npm: `npm install google-slides-llm-tools-mcp`*
-
 ---
+
+## Python Package Usage (Direct or with LangChain)
 
 ## Guide 2: Using as Python/LangChain Tools
 

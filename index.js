@@ -20,7 +20,7 @@ function startServer(options = {}) {
       return reject(new Error('Must provide either options.credentials or options.useAdc'));
     }
 
-    const scriptPath = require.resolve('./bin/google-slides-llm-tools-mcp.js');
+    const scriptPath = require.resolve('./bin/google-slides-mcp.js');
     const nodeArgs = [scriptPath];
 
     nodeArgs.push('--port', port.toString());

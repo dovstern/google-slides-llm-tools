@@ -1,23 +1,39 @@
 {
   "name": "google-slides-mcp",
-  "version": "0.2.1",
-  "description": "MCP server for Google Slides LLM tools",
+  "version": "0.2.3",
+  "description": "An npx-runnable MCP server for google-slides-llm-tools, allowing interaction with Google Slides via clients like Claude or Cursor.",
+  "main": "index.js",
   "bin": {
-    "google-slides-mcp": "./bin/run.js"
+    "google-slides-mcp": "./bin/google-slides-mcp.js"
   },
   "scripts": {
-    "start": "node ./bin/run.js"
+    "start": "node ./bin/google-slides-mcp.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dovstern/google-slides-llm-tools.git"
   },
   "keywords": [
-    "MCP",
-    "Google Slides",
-    "LLM",
-    "Claude",
-    "Anthropic"
+    "google",
+    "slides",
+    "llm",
+    "mcp",
+    "claude",
+    "cursor",
+    "ai",
+    "tools"
   ],
-  "author": "Your Name",
+  "author": "Dov Stern <dstern215@gmail.com>",
   "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/dovstern/google-slides-llm-tools/issues"
+  },
+  "homepage": "https://github.com/dovstern/google-slides-llm-tools#readme",
+  "engines": {
+    "node": ">=14"
+  },
   "dependencies": {
-    "cross-spawn": "^7.0.3"
+    "commander": "^9.0.0"
   }
 } 
