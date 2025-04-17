@@ -1,13 +1,13 @@
 {
-  "name": "google-slides-llm-tools-mcp",
+  "name": "google-slides-mcp",
   "version": "0.1.0",
   "description": "An npx-runnable MCP server for google-slides-llm-tools, allowing interaction with Google Slides via clients like Claude or Cursor.",
   "main": "index.js",
   "bin": {
-    "google-slides-llm-tools-mcp": "./bin/google-slides-llm-tools-mcp.js"
+    "google-slides-mcp": "./bin/google-slides-mcp.js"
   },
   "scripts": {
-    "start": "node ./bin/google-slides-llm-tools-mcp.js",
+    "start": "node ./bin/google-slides-mcp.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {

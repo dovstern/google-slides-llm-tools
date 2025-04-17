@@ -1,6 +1,6 @@
 # Google Slides LLM Tools - MCP Server (npx runner)
 
-[![npm version](https://badge.fury.io/js/google-slides-llm-tools-mcp.svg)](https://badge.fury.io/js/google-slides-llm-tools-mcp)
+[![npm version](https://badge.fury.io/js/google-slides-mcp.svg)](https://badge.fury.io/js/google-slides-mcp)
 
 This package provides a convenient command-line interface (CLI) wrapper to run the [google-slides-llm-tools](https://github.com/YOUR_USERNAME/google-slides-llm-tools) Python package's MCP server. It allows you to easily start the server using `npx` without needing to manage a Python environment directly for the server process itself (though Python and the underlying package are still required).
 
@@ -25,10 +25,10 @@ Once the prerequisites are met, you can run the server directly using `npx`:
 ```bash
 # Using Application Default Credentials (ADC) - Recommended
 # Make sure you've run `gcloud auth application-default login` and `gcloud auth application-default set-quota-project YOUR_PROJECT_ID`
-npx google-slides-llm-tools-mcp --use-adc --project YOUR_PROJECT_ID
+npx google-slides-mcp --use-adc --project YOUR_PROJECT_ID
 
 # OR Using a Credentials File (OAuth or Service Account JSON)
-npx google-slides-llm-tools-mcp --credentials /path/to/your/credentials.json
+npx google-slides-mcp --credentials /path/to/your/credentials.json
 ```
 
 Replace `YOUR_PROJECT_ID` and `/path/to/your/credentials.json` accordingly.
@@ -65,7 +65,7 @@ The server needs to authenticate with Google Cloud. Choose one method:
 ## Command-Line Options
 
 ```
-Usage: google-slides-llm-tools-mcp [options]
+Usage: google-slides-mcp [options]
 
 Options:
   -V, --version                   output the version number
@@ -94,7 +94,7 @@ Options:
         "google-slides": {
           "command": "npx",
           "args": [
-            "google-slides-llm-tools-mcp",
+            "google-slides-mcp",
             "--credentials", // or --use-adc
             "/path/to/your/google_credentials.json" // or --project YOUR_PROJECT_ID if using ADC
           ]
@@ -111,7 +111,7 @@ Options:
 While primarily a CLI tool, you can technically start the server programmatically (this mainly spawns the CLI process):
 
 ```javascript
-const { startServer } = require('google-slides-llm-tools-mcp');
+const { startServer } = require('google-slides-mcp');
 
 startServer({ 
     port: 8001,
@@ -137,7 +137,7 @@ This package is configured for automated publishing to npm via GitHub Actions.
 
 **Steps to Publish:**
 
-1.  **Update Code:** Make any necessary changes to the wrapper code (`bin/google-slides-llm-tools-mcp.js`, `index.js`, `README.md`, etc.).
+1.  **Update Code:** Make any necessary changes to the wrapper code (`bin/google-slides-mcp.js`, `index.js`, `README.md`, etc.).
 2.  **Update Version:** Increment the `version` number in `package.json` according to [Semantic Versioning (SemVer)](https://semver.org/).
     *   Patch release (e.g., `0.1.1`): Bug fixes.
     *   Minor release (e.g., `0.2.0`): New features, backward-compatible.
@@ -157,7 +157,7 @@ This package is configured for automated publishing to npm via GitHub Actions.
 
 5.  **Monitor Action:** Pushing the tag will automatically trigger the "Publish NPM Package" GitHub Action defined in `.github/workflows/publish-npm.yml`. Monitor its progress in the "Actions" tab of the GitHub repository.
 
-6.  **Verify:** Once the action completes successfully, check the package page on [npmjs.com](https://www.npmjs.com/package/google-slides-llm-tools-mcp) to ensure the new version is live.
+6.  **Verify:** Once the action completes successfully, check the package page on [npmjs.com](https://www.npmjs.com/package/google-slides-mcp) to ensure the new version is live.
 
 **Manual Publishing (Fallback):**
 
@@ -168,7 +168,7 @@ If the GitHub Action fails or you need to publish manually:
 
 **Important Considerations:**
 
-*   **Test Thoroughly:** Before creating a release tag, test the package locally using `npm link` or by installing it from a local tarball (`npm pack && npm install ./google-slides-llm-tools-mcp-*.tgz`).
+*   **Test Thoroughly:** Before creating a release tag, test the package locally using `npm link` or by installing it from a local tarball (`npm pack && npm install ./google-slides-mcp-*.tgz`).
 *   **Dependencies:** Ensure the `dependencies` in `package.json` are correct.
 *   **Python Dependency:** Remember this package *wraps* the Python package. Updates to the Python package might require updates (or at least testing) of this wrapper. Clearly document the compatible version(s) of `google-slides-llm-tools` if necessary.
 
