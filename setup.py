@@ -13,13 +13,13 @@ if not os.path.exists('bin'):
 
 setup(
     name="google-slides-llm-tools",
-    version="0.2.0",
-    author="Your Name",
-    author_email="your.email@example.com",
+    version="0.2.3",
+    author="Dov Stern",
+    author_email="dstern215@gmail.com",
     description="Tools for LLMs to interact with Google Slides",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/yourusername/google-slides-llm-tools",
+    url="https://github.com/dovstern/google-slides-llm-tools",
     packages=find_packages(),
     classifiers=[
         "Programming Language :: Python :: 3",
@@ -31,7 +31,6 @@ setup(
     ],
     python_requires=">=3.8",
     install_requires=requirements,
-    scripts=["bin/google_slides_mcp.py"],
     include_package_data=True,
     package_data={
         "": ["bin/*"],

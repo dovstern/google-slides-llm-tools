@@ -2,10 +2,18 @@
 
 const { spawn } = require('child_process');
 const { Command } = require('commander');
+const fs = require('fs');
+const path = require('path');
+
+// Read version from package.json
+const packageJsonPath = path.resolve(__dirname, '../package.json');
+const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+const version = packageJson.version;
+
 const program = new Command();
 
 program
-  .version('0.1.0') // Consider reading from package.json
+  .version(version)
   .option('--credentials <path>', 'Path to Google OAuth credentials JSON file')
   .option('--use-adc', 'Use Application Default Credentials (gcloud auth application-default login)')
   .option('--project <id>', 'Google Cloud project ID to use for ADC')
