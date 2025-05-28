@@ -1,7 +1,7 @@
 google-auth>=2.22.0
 google-auth-oauthlib>=1.0.0
 google-api-python-client>=2.90.0
-langchain>=0.0.267
+langchain>=0.3.20
 langchain-openai>=0.0.2
 mcp>=0.1.0
 pydantic>=2.0.0
@@ -11,3 +11,4 @@ pillow>=10.0.0
 PyPDF2>=3.0.0 
 pytest>=7.0.0
 pytest-mock>=3.10.0
+langchain-tool-to-mcp-adapter>=0.1.4

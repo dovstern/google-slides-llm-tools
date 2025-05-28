@@ -1,24 +1,29 @@
-from google_slides_llm_tools.auth import get_slides_service
-import time
+"""
+Multimedia module for Google Slides LLM Tools.
+Provides functionality for adding multimedia elements to slides.
+"""
 import os
 import tempfile
+import uuid
+import time
+from typing import Annotated, Any, Dict, List, Optional, Tuple, Union
 
-def add_image_to_slide(credentials, presentation_id, slide_id, image_url, x, y, width, height):
+from langchain.tools import tool
+from langchain_core.tools import InjectedToolArg
+from google_slides_llm_tools.utils import get_slides_service
+from google_slides_llm_tools.export import export_presentation_as_pdf, export_slide_as_pdf
+from google_slides_llm_tools.utils import Position, RGBColor
+
+@tool(response_format="content_and_artifact")
+def add_image_to_slide(
+    credentials: Annotated[Any, InjectedToolArg], 
+    presentation_id: Annotated[str, "ID of the presentation"], 
+    slide_id: Annotated[str, "ID of the slide"], 
+    image_url: Annotated[str, "URL of the image to add"], 
+    position: Annotated[Position, "Position and size of the image with x, y coordinates and width, height"]
+) -> Annotated[Tuple[str, List[Dict[str, Any]]], "Tuple of (content message, artifacts) with response and PDFs"]:
     """
     Adds an image to a slide from a URL.
-    
-    Args:
-        credentials: Authorized Google credentials
-        presentation_id (str): ID of the presentation
-        slide_id (str): ID of the slide
-        image_url (str): URL of the image to add
-        x (float): X coordinate (in points) of the image's top-left corner
-        y (float): Y coordinate (in points) of the image's top-left corner
-        width (float): Width of the image (in points)
-        height (float): Height of the image (in points)
-        
-    Returns:
-        dict: Response from the API with paths to PDFs of the presentation and the slide
     """
     service = get_slides_service(credentials)
     
@@ -34,14 +39,14 @@ def add_image_to_slide(credentials, presentation_id, slide_id, image_url, x, y, 
                 'elementProperties': {
                     'pageObjectId': slide_id,
                     'size': {
-                        'height': {'magnitude': height, 'unit': 'PT'},
-                        'width': {'magnitude': width, 'unit': 'PT'},
+                        'height': {'magnitude': position.height, 'unit': 'PT'},
+                        'width': {'magnitude': position.width, 'unit': 'PT'},
                     },
                     'transform': {
                         'scaleX': 1,
                         'scaleY': 1,
-                        'translateX': x,
-                        'translateY': y,
+                        'translateX': position.x,
+                        'translateY': position.y,
                         'unit': 'PT'
                     }
                 }
@@ -63,45 +68,29 @@ def add_image_to_slide(credentials, presentation_id, slide_id, image_url, x, y, 
             slide_index = i
             break
     
-    # Export presentation as PDF
-    from google_slides_llm_tools.export import export_presentation_as_pdf, export_slide_as_pdf
-    presentation_pdf_path = os.path.join(tempfile.gettempdir(), f"presentation_{presentation_id}.pdf")
-    export_presentation_as_pdf(credentials, presentation_id, presentation_pdf_path)
-    
-    # Export the specific slide as PDF if we found its index
-    slide_pdf_path = None
+    # Export only the specific slide as PDF since this operation affects only one slide
+    slide_artifacts = []
     if slide_index is not None:
-        slide_pdf_path = os.path.join(tempfile.gettempdir(), f"slide_{presentation_id}_{slide_index}.pdf")
-        export_slide_as_pdf(credentials, presentation_id, slide_index, slide_pdf_path)
+        _, slide_artifacts = export_slide_as_pdf(credentials, presentation_id, slide_index)
     
-    # Add PDF paths to the response
-    response["presentationPdfPath"] = presentation_pdf_path
-    if slide_pdf_path:
-        response["slidePdfPath"] = slide_pdf_path
+    content = f"Added image from {image_url} to slide {slide_id}"
     
-    return response
+    return content, slide_artifacts
 
-def add_video_to_slide(credentials, presentation_id, slide_id, video_url, x, y, width, height, 
-                      auto_play=False, start_time=0, end_time=None, mute=False):
+@tool(response_format="content_and_artifact")
+def add_video_to_slide(
+    credentials: Annotated[Any, InjectedToolArg], 
+    presentation_id: Annotated[str, "ID of the presentation"], 
+    slide_id: Annotated[str, "ID of the slide"], 
+    video_url: Annotated[str, "URL of the video to embed (e.g., YouTube link)"], 
+    position: Annotated[Position, "Position and size of the video with x, y coordinates and width, height"], 
+    auto_play: Annotated[bool, "Whether the video should autoplay when the slide is presented"] = False, 
+    start_time: Annotated[int, "Start time of the video (in seconds)"] = 0, 
+    end_time: Annotated[Optional[int], "End time of the video (in seconds)"] = None, 
+    mute: Annotated[bool, "Whether to mute the video's audio"] = False
+) -> Annotated[Tuple[str, List[Dict[str, Any]]], "Tuple of (content message, artifacts) with response and PDFs"]:
     """
     Embeds a video (e.g., YouTube) into a slide.
-    
-    Args:
-        credentials: Authorized Google credentials
-        presentation_id (str): ID of the presentation
-        slide_id (str): ID of the slide
-        video_url (str): URL of the video to embed (e.g., YouTube link)
-        x (float): X coordinate (in points) of the video's top-left corner
-        y (float): Y coordinate (in points) of the video's top-left corner
-        width (float): Width of the video (in points)
-        height (float): Height of the video (in points)
-        auto_play (bool, optional): Whether the video should autoplay when the slide is presented
-        start_time (int, optional): Start time of the video (in seconds)
-        end_time (int, optional): End time of the video (in seconds)
-        mute (bool, optional): Whether to mute the video's audio
-        
-    Returns:
-        dict: Response from the API with paths to PDFs of the presentation and the slide
     """
     service = get_slides_service(credentials)
     
@@ -130,14 +119,14 @@ def add_video_to_slide(credentials, presentation_id, slide_id, video_url, x, y, 
                 'elementProperties': {
                     'pageObjectId': slide_id,
                     'size': {
-                        'height': {'magnitude': height, 'unit': 'PT'},
-                        'width': {'magnitude': width, 'unit': 'PT'},
+                        'height': {'magnitude': position.height, 'unit': 'PT'},
+                        'width': {'magnitude': position.width, 'unit': 'PT'},
                     },
                     'transform': {
                         'scaleX': 1,
                         'scaleY': 1,
-                        'translateX': x,
-                        'translateY': y,
+                        'translateX': position.x,
+                        'translateY': position.y,
                         'unit': 'PT'
                     }
                 },
@@ -160,41 +149,26 @@ def add_video_to_slide(credentials, presentation_id, slide_id, video_url, x, y, 
             slide_index = i
             break
     
-    # Export presentation as PDF
-    from google_slides_llm_tools.export import export_presentation_as_pdf, export_slide_as_pdf
-    presentation_pdf_path = os.path.join(tempfile.gettempdir(), f"presentation_{presentation_id}.pdf")
-    export_presentation_as_pdf(credentials, presentation_id, presentation_pdf_path)
-    
-    # Export the specific slide as PDF if we found its index
-    slide_pdf_path = None
+    # Export only the specific slide as PDF since this operation affects only one slide
+    slide_artifacts = []
     if slide_index is not None:
-        slide_pdf_path = os.path.join(tempfile.gettempdir(), f"slide_{presentation_id}_{slide_index}.pdf")
-        export_slide_as_pdf(credentials, presentation_id, slide_index, slide_pdf_path)
+        _, slide_artifacts = export_slide_as_pdf(credentials, presentation_id, slide_index)
     
-    # Add PDF paths to the response
-    response["presentationPdfPath"] = presentation_pdf_path
-    if slide_pdf_path:
-        response["slidePdfPath"] = slide_pdf_path
+    content = f"Added video from {video_url} to slide {slide_id}"
     
-    return response
+    return content, slide_artifacts
 
-def insert_audio_link(credentials, presentation_id, slide_id, audio_url, x, y, width, height, link_text="Play Audio"):
+@tool(response_format="content_and_artifact")
+def insert_audio_link(
+    credentials: Annotated[Any, InjectedToolArg], 
+    presentation_id: Annotated[str, "ID of the presentation"], 
+    slide_id: Annotated[str, "ID of the slide"], 
+    audio_url: Annotated[str, "URL of the external audio file or streaming service"], 
+    position: Annotated[Position, "Position and size of the text box with x, y coordinates and width, height"], 
+    link_text: Annotated[str, "Text to display in the text box"] = "Play Audio"
+) -> Annotated[Tuple[str, List[Dict[str, Any]]], "Tuple of (content message, artifacts) with response and PDFs"]:
     """
     Inserts a text box with a hyperlink to an external audio file.
-    
-    Args:
-        credentials: Authorized Google credentials
-        presentation_id (str): ID of the presentation
-        slide_id (str): ID of the slide
-        audio_url (str): URL of the external audio file or streaming service
-        x (float): X coordinate (in points) of the text box's top-left corner
-        y (float): Y coordinate (in points) of the text box's top-left corner
-        width (float): Width of the text box (in points)
-        height (float): Height of the text box (in points)
-        link_text (str, optional): Text to display in the text box
-        
-    Returns:
-        dict: Response from the API with paths to PDFs of the presentation and the slide
     """
     service = get_slides_service(credentials)
     
@@ -210,14 +184,14 @@ def insert_audio_link(credentials, presentation_id, slide_id, audio_url, x, y, w
                 'elementProperties': {
                     'pageObjectId': slide_id,
                     'size': {
-                        'height': {'magnitude': height, 'unit': 'PT'},
-                        'width': {'magnitude': width, 'unit': 'PT'},
+                        'height': {'magnitude': position.height, 'unit': 'PT'},
+                        'width': {'magnitude': position.width, 'unit': 'PT'},
                     },
                     'transform': {
                         'scaleX': 1,
                         'scaleY': 1,
-                        'translateX': x,
-                        'translateY': y,
+                        'translateX': position.x,
+                        'translateY': position.y,
                         'unit': 'PT'
                     }
                 }
@@ -269,41 +243,26 @@ def insert_audio_link(credentials, presentation_id, slide_id, audio_url, x, y, w
             slide_index = i
             break
     
-    # Export presentation as PDF
-    from google_slides_llm_tools.export import export_presentation_as_pdf, export_slide_as_pdf
-    presentation_pdf_path = os.path.join(tempfile.gettempdir(), f"presentation_{presentation_id}.pdf")
-    export_presentation_as_pdf(credentials, presentation_id, presentation_pdf_path)
-    
-    # Export the specific slide as PDF if we found its index
-    slide_pdf_path = None
+    # Export only the specific slide as PDF since this operation affects only one slide
+    slide_artifacts = []
     if slide_index is not None:
-        slide_pdf_path = os.path.join(tempfile.gettempdir(), f"slide_{presentation_id}_{slide_index}.pdf")
-        export_slide_as_pdf(credentials, presentation_id, slide_index, slide_pdf_path)
+        _, slide_artifacts = export_slide_as_pdf(credentials, presentation_id, slide_index)
     
-    # Add PDF paths to the response
-    response["presentationPdfPath"] = presentation_pdf_path
-    if slide_pdf_path:
-        response["slidePdfPath"] = slide_pdf_path
+    content = f"Added audio link '{link_text}' to slide {slide_id}"
     
-    return response
+    return content, slide_artifacts
 
-def add_shape_to_slide(credentials, presentation_id, slide_id, shape_type, x, y, width, height, fill_color=None):
+@tool(response_format="content_and_artifact")
+def add_shape_to_slide(
+    credentials: Annotated[Any, InjectedToolArg], 
+    presentation_id: Annotated[str, "ID of the presentation"], 
+    slide_id: Annotated[str, "ID of the slide"], 
+    shape_type: Annotated[str, "Type of shape (e.g., 'RECTANGLE', 'ELLIPSE', 'ARROW')"], 
+    position: Annotated[Position, "Position and size of the shape with x, y coordinates and width, height"], 
+    fill_color: Annotated[Optional[RGBColor], "RGB color for the shape"] = None
+) -> Annotated[Tuple[str, List[Dict[str, Any]]], "Tuple of (content message, artifacts) with response and PDFs"]:
     """
     Adds a shape to a slide.
-    
-    Args:
-        credentials: Authorized Google credentials
-        presentation_id (str): ID of the presentation
-        slide_id (str): ID of the slide
-        shape_type (str): Type of shape (e.g., 'RECTANGLE', 'ELLIPSE', 'ARROW')
-        x (float): X coordinate (in points) of the shape's top-left corner
-        y (float): Y coordinate (in points) of the shape's top-left corner
-        width (float): Width of the shape (in points)
-        height (float): Height of the shape (in points)
-        fill_color (dict, optional): RGB color for the shape (e.g., {'red': 0.9, 'green': 0.9, 'blue': 0.9})
-        
-    Returns:
-        dict: Response from the API with paths to PDFs of the presentation and the slide
     """
     service = get_slides_service(credentials)
     
@@ -314,14 +273,14 @@ def add_shape_to_slide(credentials, presentation_id, slide_id, shape_type, x, y,
     element_properties = {
         'pageObjectId': slide_id,
         'size': {
-            'height': {'magnitude': height, 'unit': 'PT'},
-            'width': {'magnitude': width, 'unit': 'PT'},
+            'height': {'magnitude': position.height, 'unit': 'PT'},
+            'width': {'magnitude': position.width, 'unit': 'PT'},
         },
         'transform': {
             'scaleX': 1,
             'scaleY': 1,
-            'translateX': x,
-            'translateY': y,
+            'translateX': position.x,
+            'translateY': position.y,
             'unit': 'PT'
         }
     }
@@ -347,7 +306,11 @@ def add_shape_to_slide(credentials, presentation_id, slide_id, shape_type, x, y,
                     'shapeBackgroundFill': {
                         'solidFill': {
                             'color': {
-                                'rgbColor': fill_color
+                                'rgbColor': {
+                                    'red': fill_color.red,
+                                    'green': fill_color.green,
+                                    'blue': fill_color.blue
+                                }
                             }
                         }
                     }
@@ -369,20 +332,146 @@ def add_shape_to_slide(credentials, presentation_id, slide_id, shape_type, x, y,
             slide_index = i
             break
     
-    # Export presentation as PDF
-    from google_slides_llm_tools.export import export_presentation_as_pdf, export_slide_as_pdf
-    presentation_pdf_path = os.path.join(tempfile.gettempdir(), f"presentation_{presentation_id}.pdf")
-    export_presentation_as_pdf(credentials, presentation_id, presentation_pdf_path)
-    
-    # Export the specific slide as PDF if we found its index
-    slide_pdf_path = None
+    # Export only the specific slide as PDF since this operation affects only one slide
+    slide_artifacts = []
     if slide_index is not None:
-        slide_pdf_path = os.path.join(tempfile.gettempdir(), f"slide_{presentation_id}_{slide_index}.pdf")
-        export_slide_as_pdf(credentials, presentation_id, slide_index, slide_pdf_path)
+        _, slide_artifacts = export_slide_as_pdf(credentials, presentation_id, slide_index)
     
-    # Add PDF paths to the response
-    response["presentationPdfPath"] = presentation_pdf_path
-    if slide_pdf_path:
-        response["slidePdfPath"] = slide_pdf_path
+    content = f"Added {shape_type} shape to slide {slide_id}"
     
-    return response 
+    return content, slide_artifacts
+
+@tool
+def create_shape(
+    credentials: Annotated[Any, InjectedToolArg], 
+    presentation_id: Annotated[str, "ID of the presentation"], 
+    slide_id: Annotated[str, "ID of the slide"], 
+    shape_type: Annotated[str, "Type of shape (e.g., 'RECTANGLE', 'ELLIPSE', 'ARROW')"], 
+    position: Annotated[Position, "Position and size of the shape with x, y coordinates and width, height"], 
+    fill_color: Annotated[Optional[RGBColor], "RGB color for the shape"] = None
+) -> Annotated[Dict[str, str], "Response containing the objectId of the new shape"]:
+    """
+    Creates a shape on a slide.
+    """
+    service = get_slides_service(credentials)
+    
+    # Generate a unique ID for the shape
+    shape_id = f'Shape_{int(time.time())}'
+    
+    # Prepare the shape properties
+    element_properties = {
+        'pageObjectId': slide_id,
+        'size': {
+            'height': {'magnitude': position.height, 'unit': 'PT'},
+            'width': {'magnitude': position.width, 'unit': 'PT'},
+        },
+        'transform': {
+            'scaleX': 1,
+            'scaleY': 1,
+            'translateX': position.x,
+            'translateY': position.y,
+            'unit': 'PT'
+        }
+    }
+    
+    # Create the request to add a shape
+    requests = [
+        {
+            'createShape': {
+                'objectId': shape_id,
+                'shapeType': shape_type,
+                'elementProperties': element_properties
+            }
+        }
+    ]
+    
+    # Add fill color if specified
+    if fill_color is not None:
+        requests.append({
+            'updateShapeProperties': {
+                'objectId': shape_id,
+                'fields': 'shapeBackgroundFill.solidFill.color',
+                'shapeProperties': {
+                    'shapeBackgroundFill': {
+                        'solidFill': {
+                            'color': {
+                                'rgbColor': {
+                                    'red': fill_color.red,
+                                    'green': fill_color.green,
+                                    'blue': fill_color.blue
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        })
+    
+    body = {'requests': requests}
+    response = service.presentations().batchUpdate(
+        presentationId=presentation_id, body=body).execute()
+    
+    # Extract the objectId from the response
+    object_id = response.get('replies', [{}])[0].get('createShape', {}).get('objectId')
+    
+    return {
+        "objectId": object_id
+    }
+
+@tool
+def group_elements(
+    credentials: Annotated[Any, InjectedToolArg], 
+    presentation_id: Annotated[str, "ID of the presentation"], 
+    element_ids: Annotated[List[str], "List of element IDs to group"]
+) -> Annotated[Dict[str, str], "Response containing the groupId of the new group"]:
+    """
+    Groups multiple elements on a slide.
+    """
+    service = get_slides_service(credentials)
+    
+    # Create the request to group elements
+    requests = [
+        {
+            'createGroup': {
+                'childrenObjectIds': element_ids,
+            }
+        }
+    ]
+    
+    body = {'requests': requests}
+    response = service.presentations().batchUpdate(
+        presentationId=presentation_id, body=body).execute()
+    
+    # Extract the groupId from the response
+    group_id = response.get('replies', [{}])[0].get('createGroup', {}).get('objectId')
+    
+    return {
+        "groupId": group_id
+    }
+
+@tool
+def ungroup_elements(
+    credentials: Annotated[Any, InjectedToolArg], 
+    presentation_id: Annotated[str, "ID of the presentation"], 
+    group_id: Annotated[str, "ID of the group to ungroup"]
+) -> Annotated[Dict, "Empty dict on success"]:
+    """
+    Ungroups elements in a group.
+    """
+    service = get_slides_service(credentials)
+    
+    # Create the request to ungroup elements
+    requests = [
+        {
+            'ungroupObjects': {
+                'objectIds': [group_id],
+            }
+        }
+    ]
+    
+    body = {'requests': requests}
+    response = service.presentations().batchUpdate(
+        presentationId=presentation_id, body=body).execute()
+    
+    # Return empty dict on success
+    return {} 

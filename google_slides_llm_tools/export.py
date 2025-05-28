@@ -1,19 +1,29 @@
-from google_slides_llm_tools.auth import get_drive_service, get_slides_service
-import os
-import base64
+"""
+Export module for Google Slides LLM Tools.
+Provides functionality to export presentations and slides as PDFs and images.
+"""
 
-def export_presentation_as_pdf(credentials, presentation_id, output_path=None):
+import os
+import tempfile
+import time
+from typing import Annotated, Any, Dict, List, Optional, Tuple, Union
+
+from google_slides_llm_tools.utils import get_drive_service, get_slides_service
+import base64
+from googleapiclient.http import MediaIoBaseDownload
+import uuid
+import requests
+from langchain.tools import tool
+from langchain_core.tools import InjectedToolArg
+
+@tool(response_format="content_and_artifact")
+def export_presentation_as_pdf(
+    credentials: Annotated[Any, InjectedToolArg], 
+    presentation_id: Annotated[str, "ID of the presentation to export"], 
+    output_path: Annotated[Optional[str], "Path to save the exported PDF"] = None
+) -> Annotated[Tuple[str, Union[str, List[Dict[str, Any]]]], "Tuple of (content message, artifact) where artifact is PDF data URL or file path"]:
     """
     Exports a Google Slides presentation as a PDF file.
-    
-    Args:
-        credentials: Authorized Google credentials
-        presentation_id (str): ID of the presentation to export
-        output_path (str, optional): Path to save the exported PDF
-        
-    Returns:
-        tuple: (content, artifact) where content is a message string and 
-               artifact is the PDF data URL or file path
     """
     drive_service = get_drive_service(credentials)
     
@@ -37,25 +47,30 @@ def export_presentation_as_pdf(credentials, presentation_id, output_path=None):
     base64_pdf = base64.b64encode(pdf_content).decode('utf-8')
     data_url = f"data:application/pdf;base64,{base64_pdf}"
     content = "Presentation exported as PDF"
-    return content, data_url
+    
+    # Return in the format expected by LangChain tools with content_and_artifact
+    artifact = {
+        "type": "file",
+        "file": {
+            "filename": f"presentation_{presentation_id}.pdf",
+            "file_data": data_url,
+        }
+    }
+    return content, [artifact]
 
-def export_slide_as_pdf(credentials, presentation_id, slide_index, output_path=None):
+@tool(response_format="content_and_artifact")
+def export_slide_as_pdf(
+    credentials: Annotated[Any, InjectedToolArg], 
+    presentation_id: Annotated[str, "ID of the original presentation"], 
+    slide_index: Annotated[int, "Index of the slide to export (0-based)"], 
+    output_path: Annotated[Optional[str], "Path to save the exported PDF"] = None
+) -> Annotated[Tuple[str, Union[str, List[Dict[str, Any]]]], "Tuple of (content message, artifact) where artifact is PDF data URL or file path"]:
     """
     Exports a specific slide from a Google Slides presentation as a PDF.
     
     This is accomplished by creating a temporary copy of the original presentation,
     removing all slides except the one to export, exporting it as PDF, and then
     deleting the temporary copy.
-    
-    Args:
-        credentials: Authorized Google credentials
-        presentation_id (str): ID of the original presentation
-        slide_index (int): Index of the slide to export (0-based)
-        output_path (str, optional): Path to save the exported PDF
-        
-    Returns:
-        tuple: (content, artifact) where content is a message string and 
-               artifact is the PDF data URL or file path
     """
     drive_service = get_drive_service(credentials)
     slides_service = get_slides_service(credentials)
@@ -118,25 +133,30 @@ def export_slide_as_pdf(credentials, presentation_id, slide_index, output_path=N
         base64_pdf = base64.b64encode(pdf_content).decode('utf-8')
         data_url = f"data:application/pdf;base64,{base64_pdf}"
         content = f"Slide {slide_index + 1} exported as PDF"
-        return content, data_url
+        
+        # Return in the format expected by LangChain tools with content_and_artifact
+        artifact = {
+            "type": "file",
+            "file": {
+                "filename": f"slide_{presentation_id}_{slide_index}.pdf",
+                "file_data": data_url,
+            }
+        }
+        return content, [artifact]
     
     finally:
         # Step 7: Clean up by deleting the copied presentation
         drive_service.files().delete(fileId=copied_presentation_id).execute()
 
-def get_presentation_thumbnail(credentials, presentation_id, slide_index=0, output_path=None):
+@tool(response_format="content_and_artifact")
+def get_presentation_thumbnail(
+    credentials: Annotated[Any, InjectedToolArg], 
+    presentation_id: Annotated[str, "ID of the presentation"], 
+    slide_index: Annotated[int, "Index of the slide (0-based)"] = 0, 
+    output_path: Annotated[Optional[str], "Path to save the thumbnail image"] = None
+) -> Annotated[Tuple[str, Union[str, List[Dict[str, Any]]]], "Tuple of (content message, artifact) where artifact is image data URL or file path"]:
     """
     Gets a thumbnail image of a specific slide in a presentation.
-    
-    Args:
-        credentials: Authorized Google credentials
-        presentation_id (str): ID of the presentation
-        slide_index (int, optional): Index of the slide (0-based)
-        output_path (str, optional): Path to save the thumbnail image
-        
-    Returns:
-        tuple: (content, artifact) where content is a message string and 
-               artifact is the image data URL or file path
     """
     slides_service = get_slides_service(credentials)
     
@@ -162,7 +182,6 @@ def get_presentation_thumbnail(credentials, presentation_id, slide_index=0, outp
     
     # If an output path is provided, download the thumbnail
     if output_path:
-        import requests
         response = requests.get(thumbnail_url)
         with open(output_path, 'wb') as image_file:
             image_file.write(response.content)
@@ -170,9 +189,17 @@ def get_presentation_thumbnail(credentials, presentation_id, slide_index=0, outp
         return content, output_path
     
     # Otherwise, download the image and encode it as base64
-    import requests
     response = requests.get(thumbnail_url)
     base64_image = base64.b64encode(response.content).decode('utf-8')
     data_url = f"data:image/png;base64,{base64_image}"
     content = f"Thumbnail of slide {slide_index + 1}"
-    return content, data_url 
+    
+    # Return in the format expected by LangChain tools with content_and_artifact
+    artifact = {
+        "type": "file",
+        "file": {
+            "filename": f"thumbnail_{presentation_id}_{slide_index}.png",
+            "file_data": data_url,
+        }
+    }
+    return content, [artifact] 

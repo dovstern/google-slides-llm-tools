@@ -4,7 +4,8 @@ Tests for the collaboration module in the Google Slides LLM Tools package.
 import unittest
 from unittest.mock import patch, MagicMock, ANY
 
-from google_slides_llm_tools import (
+# Import the functions from the module to test
+from google_slides_llm_tools.collaboration import (
     add_editor_permission,
     add_viewer_permission,
     add_commenter_permission,
@@ -13,229 +14,267 @@ from google_slides_llm_tools import (
     make_public
 )
 
+# Import auth functions
+from google_slides_llm_tools.auth import get_drive_service
+
 
 class TestCollaboration(unittest.TestCase):
     """Test cases for the collaboration module."""
 
-    def test_add_editor_permission(self):
-        """Test adding editor permission to a presentation."""
-        # Setup
-        mock_service = MagicMock()
+    @patch('google_slides_llm_tools.collaboration.get_drive_service')
+    def test_add_editor_permission(self, mock_get_drive):
+        """Test adding editor permission for a specific user."""
+        # Setup mocks
+        mock_drive_service = MagicMock()
+        mock_get_drive.return_value = mock_drive_service
+        
         mock_permissions = MagicMock()
-        mock_service.permissions.return_value = mock_permissions
+        mock_drive_service.permissions.return_value = mock_permissions
         
         mock_create = MagicMock()
         mock_permissions.create = mock_create
+        mock_create.return_value.execute.return_value = {'id': 'test_permission_id', 'role': 'writer'}
         
-        mock_response = MagicMock()
-        mock_response.execute.return_value = {'id': 'permission_id_123', 'role': 'writer', 'type': 'user'}
-        mock_create.return_value = mock_response
+        # Set up mock credentials
+        mock_credentials = MagicMock()
         
-        # Execute
-        with patch('google_slides_llm_tools.collaboration.get_drive_service', return_value=mock_service):
-            result = add_editor_permission(
-                MagicMock(),
-                "test_presentation_id",
-                "user@example.com",
-                "User permission added",
-                True
-            )
+        # Execute - access wrapped function
+        result = add_editor_permission.func(
+            credentials=mock_credentials,
+            presentation_id="test_presentation_id",
+            email="test_user@example.com"
+        )
         
         # Assert
-        mock_create.assert_called_once_with(
-            fileId="test_presentation_id",
-            body={
-                'type': 'user',
-                'role': 'writer',
-                'emailAddress': 'user@example.com'
-            },
-            emailMessage="User permission added",
-            sendNotificationEmail=True
-        )
-        self.assertEqual(result['id'], 'permission_id_123')
-        self.assertEqual(result['role'], 'writer')
-        self.assertEqual(result['type'], 'user')
+        mock_get_drive.assert_called_once_with(mock_credentials)
+        
+        # Check create was called with the right parameters
+        mock_create.assert_called_once()
+        call_args = mock_create.call_args.kwargs
+        self.assertEqual(call_args['fileId'], 'test_presentation_id')
+        
+        # Check that body contains expected values
+        self.assertEqual(call_args['body']['role'], 'writer')
+        self.assertEqual(call_args['body']['type'], 'user')
+        self.assertEqual(call_args['body']['emailAddress'], 'test_user@example.com')
+        
+        # Check result
+        self.assertTrue(result['success'])
+        self.assertEqual(result['permission_id'], 'test_permission_id')
 
-    def test_add_viewer_permission(self):
-        """Test adding viewer permission to a presentation."""
-        # Setup
-        mock_service = MagicMock()
+    @patch('google_slides_llm_tools.collaboration.get_drive_service')
+    def test_add_viewer_permission(self, mock_get_drive):
+        """Test adding viewer permission for a specific user."""
+        # Setup mocks
+        mock_drive_service = MagicMock()
+        mock_get_drive.return_value = mock_drive_service
+        
         mock_permissions = MagicMock()
-        mock_service.permissions.return_value = mock_permissions
+        mock_drive_service.permissions.return_value = mock_permissions
         
         mock_create = MagicMock()
         mock_permissions.create = mock_create
+        mock_create.return_value.execute.return_value = {'id': 'test_permission_id', 'role': 'reader'}
         
-        mock_response = MagicMock()
-        mock_response.execute.return_value = {'id': 'permission_id_123', 'role': 'reader', 'type': 'user'}
-        mock_create.return_value = mock_response
+        # Set up mock credentials
+        mock_credentials = MagicMock()
         
-        # Execute
-        with patch('google_slides_llm_tools.collaboration.get_drive_service', return_value=mock_service):
-            result = add_viewer_permission(
-                MagicMock(),
-                "test_presentation_id",
-                "user@example.com",
-                "User permission added",
-                True
-            )
+        # Execute - access wrapped function
+        result = add_viewer_permission.func(
+            credentials=mock_credentials,
+            presentation_id="test_presentation_id",
+            email="test_user@example.com"
+        )
         
         # Assert
-        mock_create.assert_called_once_with(
-            fileId="test_presentation_id",
-            body={
-                'type': 'user',
-                'role': 'reader',
-                'emailAddress': 'user@example.com'
-            },
-            emailMessage="User permission added",
-            sendNotificationEmail=True
-        )
-        self.assertEqual(result['id'], 'permission_id_123')
-        self.assertEqual(result['role'], 'reader')
-        self.assertEqual(result['type'], 'user')
+        mock_get_drive.assert_called_once_with(mock_credentials)
+        
+        # Check create was called with the right parameters
+        mock_create.assert_called_once()
+        call_args = mock_create.call_args.kwargs
+        self.assertEqual(call_args['fileId'], 'test_presentation_id')
+        
+        # Check that body contains expected values
+        self.assertEqual(call_args['body']['role'], 'reader')
+        self.assertEqual(call_args['body']['type'], 'user')
+        self.assertEqual(call_args['body']['emailAddress'], 'test_user@example.com')
+        
+        # Check result
+        self.assertTrue(result['success'])
+        self.assertEqual(result['permission_id'], 'test_permission_id')
 
-    def test_add_commenter_permission(self):
-        """Test adding commenter permission to a presentation."""
-        # Setup
-        mock_service = MagicMock()
+    @patch('google_slides_llm_tools.collaboration.get_drive_service')
+    def test_add_commenter_permission(self, mock_get_drive):
+        """Test adding commenter permission for a specific user."""
+        # Setup mocks
+        mock_drive_service = MagicMock()
+        mock_get_drive.return_value = mock_drive_service
+        
         mock_permissions = MagicMock()
-        mock_service.permissions.return_value = mock_permissions
+        mock_drive_service.permissions.return_value = mock_permissions
         
         mock_create = MagicMock()
         mock_permissions.create = mock_create
+        mock_create.return_value.execute.return_value = {'id': 'test_permission_id', 'role': 'commenter'}
         
-        mock_response = MagicMock()
-        mock_response.execute.return_value = {'id': 'permission_id_123', 'role': 'commenter', 'type': 'user'}
-        mock_create.return_value = mock_response
+        # Set up mock credentials
+        mock_credentials = MagicMock()
         
-        # Execute
-        with patch('google_slides_llm_tools.collaboration.get_drive_service', return_value=mock_service):
-            result = add_commenter_permission(
-                MagicMock(),
-                "test_presentation_id",
-                "user@example.com",
-                "User permission added",
-                True
-            )
+        # Execute - access wrapped function
+        result = add_commenter_permission.func(
+            credentials=mock_credentials,
+            presentation_id="test_presentation_id",
+            email="test_user@example.com"
+        )
         
         # Assert
-        mock_create.assert_called_once_with(
-            fileId="test_presentation_id",
-            body={
-                'type': 'user',
-                'role': 'commenter',
-                'emailAddress': 'user@example.com'
-            },
-            emailMessage="User permission added",
-            sendNotificationEmail=True
-        )
-        self.assertEqual(result['id'], 'permission_id_123')
-        self.assertEqual(result['role'], 'commenter')
-        self.assertEqual(result['type'], 'user')
+        mock_get_drive.assert_called_once_with(mock_credentials)
+        
+        # Check create was called with the right parameters
+        mock_create.assert_called_once()
+        call_args = mock_create.call_args.kwargs
+        self.assertEqual(call_args['fileId'], 'test_presentation_id')
+        
+        # Check that body contains expected values
+        self.assertEqual(call_args['body']['role'], 'commenter')
+        self.assertEqual(call_args['body']['type'], 'user')
+        self.assertEqual(call_args['body']['emailAddress'], 'test_user@example.com')
+        
+        # Check result
+        self.assertTrue(result['success'])
+        self.assertEqual(result['permission_id'], 'test_permission_id')
 
-    def test_remove_permission(self):
-        """Test removing a permission from a presentation."""
-        # Setup
-        mock_service = MagicMock()
+    @patch('google_slides_llm_tools.collaboration.get_drive_service')
+    def test_remove_permission(self, mock_get_drive):
+        """Test removing permission for a user."""
+        # Setup mocks
+        mock_drive_service = MagicMock()
+        mock_get_drive.return_value = mock_drive_service
+        
         mock_permissions = MagicMock()
-        mock_service.permissions.return_value = mock_permissions
+        mock_drive_service.permissions.return_value = mock_permissions
         
         mock_delete = MagicMock()
         mock_permissions.delete = mock_delete
+        mock_delete.return_value.execute.return_value = None  # Delete usually returns empty
         
-        mock_response = MagicMock()
-        mock_response.execute.return_value = {}
-        mock_delete.return_value = mock_response
+        # Set up mock credentials
+        mock_credentials = MagicMock()
         
-        # Execute
-        with patch('google_slides_llm_tools.collaboration.get_drive_service', return_value=mock_service):
-            result = remove_permission(
-                MagicMock(),
-                "test_presentation_id",
-                "permission_id_123"
-            )
+        # Execute - access wrapped function
+        result = remove_permission.func(
+            credentials=mock_credentials,
+            presentation_id="test_presentation_id",
+            permission_id="test_permission_id"
+        )
         
         # Assert
-        mock_delete.assert_called_once_with(
-            fileId="test_presentation_id",
-            permissionId="permission_id_123"
-        )
-        self.assertEqual(result, {'success': True})
+        mock_get_drive.assert_called_once_with(mock_credentials)
+        
+        # Check delete was called with the right parameters
+        mock_delete.assert_called_once()
+        call_args = mock_delete.call_args.kwargs
+        self.assertEqual(call_args['fileId'], 'test_presentation_id')
+        self.assertEqual(call_args['permissionId'], 'test_permission_id')
+        
+        # Check result
+        self.assertTrue(result['success'])
 
-    def test_list_permissions(self):
+    @patch('google_slides_llm_tools.collaboration.get_drive_service')
+    def test_list_permissions(self, mock_get_drive):
         """Test listing permissions for a presentation."""
-        # Setup
-        mock_service = MagicMock()
+        # Setup mocks
+        mock_drive_service = MagicMock()
+        mock_get_drive.return_value = mock_drive_service
+        
         mock_permissions = MagicMock()
-        mock_service.permissions.return_value = mock_permissions
+        mock_drive_service.permissions.return_value = mock_permissions
         
         mock_list = MagicMock()
         mock_permissions.list = mock_list
         
-        mock_response = MagicMock()
-        mock_response.execute.return_value = {
+        # Sample permissions list response
+        mock_permissions_response = {
             'permissions': [
-                {'id': 'permission_id_1', 'role': 'owner', 'type': 'user', 'emailAddress': 'owner@example.com'},
-                {'id': 'permission_id_2', 'role': 'writer', 'type': 'user', 'emailAddress': 'editor@example.com'},
-                {'id': 'permission_id_3', 'role': 'reader', 'type': 'user', 'emailAddress': 'viewer@example.com'}
+                {
+                    'id': 'permission1',
+                    'type': 'user',
+                    'role': 'writer',
+                    'emailAddress': 'user1@example.com'
+                },
+                {
+                    'id': 'permission2',
+                    'type': 'user',
+                    'role': 'reader',
+                    'emailAddress': 'user2@example.com'
+                }
             ]
         }
-        mock_list.return_value = mock_response
+        mock_list.return_value.execute.return_value = mock_permissions_response
         
-        # Execute
-        with patch('google_slides_llm_tools.collaboration.get_drive_service', return_value=mock_service):
-            result = list_permissions(
-                MagicMock(),
-                "test_presentation_id"
-            )
+        # Set up mock credentials
+        mock_credentials = MagicMock()
+        
+        # Execute - access wrapped function
+        result = list_permissions.func(
+            credentials=mock_credentials,
+            presentation_id="test_presentation_id"
+        )
         
         # Assert
-        mock_list.assert_called_once_with(
-            fileId="test_presentation_id",
-            fields="permissions(id,type,emailAddress,role,displayName)"
-        )
-        self.assertEqual(len(result), 3)
-        self.assertEqual(result[0]['id'], 'permission_id_1')
-        self.assertEqual(result[0]['role'], 'owner')
-        self.assertEqual(result[1]['id'], 'permission_id_2')
-        self.assertEqual(result[1]['role'], 'writer')
-        self.assertEqual(result[2]['id'], 'permission_id_3')
-        self.assertEqual(result[2]['role'], 'reader')
+        mock_get_drive.assert_called_once_with(mock_credentials)
+        
+        # Check list was called with the right parameters
+        mock_list.assert_called_once()
+        call_args = mock_list.call_args.kwargs
+        self.assertEqual(call_args['fileId'], 'test_presentation_id')
+        
+        # Check result contains the permissions list
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[0]['id'], 'permission1')
+        self.assertEqual(result[0]['emailAddress'], 'user1@example.com')
+        self.assertEqual(result[1]['id'], 'permission2')
+        self.assertEqual(result[1]['role'], 'reader')
 
-    def test_make_public(self):
-        """Test making a presentation public."""
-        # Setup
-        mock_service = MagicMock()
+    @patch('google_slides_llm_tools.collaboration.get_drive_service')
+    def test_make_public(self, mock_get_drive):
+        """Test making a presentation publicly accessible."""
+        # Setup mocks
+        mock_drive_service = MagicMock()
+        mock_get_drive.return_value = mock_drive_service
+        
         mock_permissions = MagicMock()
-        mock_service.permissions.return_value = mock_permissions
+        mock_drive_service.permissions.return_value = mock_permissions
         
         mock_create = MagicMock()
         mock_permissions.create = mock_create
+        mock_create.return_value.execute.return_value = {'id': 'public_permission_id', 'role': 'reader', 'type': 'anyone'}
         
-        mock_response = MagicMock()
-        mock_response.execute.return_value = {'id': 'permission_id_123', 'role': 'reader', 'type': 'anyone'}
-        mock_create.return_value = mock_response
+        # Set up mock credentials
+        mock_credentials = MagicMock()
         
-        # Execute
-        with patch('google_slides_llm_tools.collaboration.get_drive_service', return_value=mock_service):
-            result = make_public(
-                MagicMock(),
-                "test_presentation_id",
-                "reader"
-            )
+        # Execute - access wrapped function
+        result = make_public.func(
+            credentials=mock_credentials,
+            presentation_id="test_presentation_id",
+            role="reader"  # Can be reader, commenter, etc
+        )
         
         # Assert
-        mock_create.assert_called_once_with(
-            fileId="test_presentation_id",
-            body={
-                'type': 'anyone',
-                'role': 'reader'
-            }
-        )
-        self.assertEqual(result['id'], 'permission_id_123')
-        self.assertEqual(result['role'], 'reader')
-        self.assertEqual(result['type'], 'anyone')
+        mock_get_drive.assert_called_once_with(mock_credentials)
+        
+        # Check create was called with the right parameters
+        mock_create.assert_called_once()
+        call_args = mock_create.call_args.kwargs
+        self.assertEqual(call_args['fileId'], 'test_presentation_id')
+        
+        # Check that body contains expected values
+        self.assertEqual(call_args['body']['role'], 'reader')
+        self.assertEqual(call_args['body']['type'], 'anyone')
+        
+        # Check result
+        self.assertTrue(result['success'])
+        self.assertEqual(result['permission_id'], 'public_permission_id')
 
 
 if __name__ == '__main__':

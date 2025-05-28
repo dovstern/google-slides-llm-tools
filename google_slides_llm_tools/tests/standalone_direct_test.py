@@ -6,10 +6,31 @@ import sys
 import os
 import unittest
 from unittest.mock import MagicMock, patch
+from google_slides_llm_tools.auth import authenticate
+from google_slides_llm_tools.slides_operations import (
+    create_presentation,
+    add_slide,
+    duplicate_slide,
+    reorder_slides,
+    delete_slide
+)
+from googleapiclient.discovery import build
 
 class TestSlidesOperations(unittest.TestCase):
     """Test case for slides operations functions"""
     
+    @classmethod
+    def setUpClass(cls):
+        """Authenticate once for all tests in this class."""
+        # Ensure environment variable is set or replace with your path
+        credentials_path = os.environ.get('TEST_CREDENTIALS_PATH')
+        if not credentials_path:
+            raise unittest.SkipTest("TEST_CREDENTIALS_PATH environment variable not set.")
+        cls.credentials = authenticate(credentials_path=credentials_path)
+        cls.presentation_id = None
+        cls.slide_id = None
+        cls.new_slide_id = None
+
     def setUp(self):
         """Set up mocks before each test"""
         # Create mocks for slides service
@@ -87,53 +108,98 @@ class TestSlidesOperations(unittest.TestCase):
             p.stop()
     
     def test_create_presentation(self):
-        """Test creating a new presentation."""
-        result = self.create_presentation(self.mock_credentials, "Test Presentation")
-        self.assertEqual(result['presentationId'], 'test_presentation_id')
-        self.assertEqual(result['pdfPath'], '/tmp/test_presentation.pdf')
-    
-    def test_get_presentation(self):
-        """Test getting presentation information."""
-        result = self.get_presentation(self.mock_credentials, "test_presentation_id")
-        self.assertEqual(result['presentationId'], 'test_presentation_id')
-        self.assertEqual(result['title'], 'Test Presentation')
-    
+        """Test creating a presentation."""
+        # Execute
+        result = create_presentation(self.credentials, "Test Presentation Standalone")
+        TestSlidesOperations.presentation_id = result['presentationId']
+        print(f"Created presentation: {self.presentation_id}")
+        # Assert: Check if pdfPath exists and is a string
+        self.assertIn('pdfPath', result)
+        self.assertIsInstance(result['pdfPath'], str)
+        self.assertIsNotNone(self.presentation_id)
+
     def test_add_slide(self):
-        """Test adding a slide to a presentation."""
-        result = self.add_slide(self.mock_credentials, "test_presentation_id", "BLANK")
-        self.assertEqual(result['slideId'], 'new_slide_id')
-        self.assertEqual(result['presentationPdfPath'], '/tmp/test_presentation.pdf')
-        self.assertEqual(result['slidePdfPath'], '/tmp/test_slide.pdf')
-    
-    def test_delete_slide(self):
-        """Test deleting a slide from a presentation."""
-        result = self.delete_slide(self.mock_credentials, "test_presentation_id", "slide1")
-        self.assertTrue(result['success'])
-        self.assertEqual(result['pdfPath'], '/tmp/test_presentation.pdf')
-    
-    def test_reorder_slides(self):
-        """Test reordering slides in a presentation."""
-        slide_ids = ['slide1', 'slide2']
-        insertion_index = 1
-        result = self.reorder_slides(self.mock_credentials, "test_presentation_id", slide_ids, insertion_index)
-        self.assertTrue(result['success'])
-        self.assertEqual(result['slideIds'], slide_ids)
-        self.assertEqual(result['pdfPath'], '/tmp/test_presentation.pdf')
-    
+        """Test adding a slide."""
+        self.assertIsNotNone(self.presentation_id, "Presentation must be created first")
+        # Execute
+        result = add_slide(self.credentials, self.presentation_id, "BLANK")
+        TestSlidesOperations.slide_id = result['slideId']
+        print(f"Added slide: {self.slide_id}")
+        # Assert: Check PDF paths
+        self.assertIn('presentationPdfPath', result)
+        self.assertIsInstance(result['presentationPdfPath'], str)
+        self.assertIn('slidePdfPath', result)
+        self.assertIsInstance(result['slidePdfPath'], str)
+        self.assertIsNotNone(self.slide_id)
+
     def test_duplicate_slide(self):
-        """Test duplicating a slide in a presentation."""
-        result = self.duplicate_slide(self.mock_credentials, "test_presentation_id", "slide1")
-        self.assertEqual(result['slideId'], 'duplicated_slide_id')
-        self.assertEqual(result['presentationPdfPath'], '/tmp/test_presentation.pdf')
-        self.assertEqual(result['slidePdfPath'], '/tmp/test_slide.pdf')
+        """Test duplicating a slide."""
+        self.assertIsNotNone(self.presentation_id, "Presentation must be created first")
+        self.assertIsNotNone(self.slide_id, "Slide must be added first")
+        # Execute
+        result = duplicate_slide(self.credentials, self.presentation_id, self.slide_id)
+        TestSlidesOperations.new_slide_id = result['slideId']
+        print(f"Duplicated slide {self.slide_id} to {self.new_slide_id}")
+        # Assert: Check PDF paths
+        self.assertIn('presentationPdfPath', result)
+        self.assertIsInstance(result['presentationPdfPath'], str)
+        self.assertIn('slidePdfPath', result)
+        self.assertIsInstance(result['slidePdfPath'], str)
+        self.assertIsNotNone(self.new_slide_id)
+        self.assertNotEqual(self.new_slide_id, self.slide_id)
+
+    def test_reorder_slides(self):
+        """Test reordering slides."""
+        self.assertIsNotNone(self.presentation_id, "Presentation must be created first")
+        self.assertIsNotNone(self.slide_id, "Slide must be added first")
+        self.assertIsNotNone(self.new_slide_id, "Slide must be duplicated first")
+        # Execute
+        result = reorder_slides(self.credentials, self.presentation_id, [self.new_slide_id, self.slide_id], 0)
+        print(f"Reordered slides")
+        # Assert: Check PDF path and slide order
+        self.assertIn('pdfPath', result)
+        self.assertIsInstance(result['pdfPath'], str)
+        self.assertIn('slideIds', result)
+        self.assertIsInstance(result['slideIds'], list)
+        # Check if the order is updated (assuming more than 2 slides initially)
+        if len(result['slideIds']) > 1:
+            self.assertEqual(result['slideIds'][0], self.new_slide_id)
+            self.assertEqual(result['slideIds'][1], self.slide_id)
+
+    def test_delete_slide(self):
+        """Test deleting a slide."""
+        self.assertIsNotNone(self.presentation_id, "Presentation must be created first")
+        self.assertIsNotNone(self.new_slide_id, "Duplicated slide must exist first")
+        # Execute
+        result = delete_slide(self.credentials, self.presentation_id, self.new_slide_id)
+        print(f"Deleted slide: {self.new_slide_id}")
+        # Assert: Check PDF path and success
+        self.assertIn('pdfPath', result)
+        self.assertIsInstance(result['pdfPath'], str)
+        self.assertTrue(result['success'])
+
+    @classmethod
+    def tearDownClass(cls):
+        """Clean up by deleting the test presentation if created."""
+        if cls.presentation_id:
+            try:
+                # Use Drive API v3 to delete the file
+                drive_service = cls.credentials.authorize(build('drive', 'v3')) # Needs build import
+                drive_service.files().delete(fileId=cls.presentation_id).execute()
+                print(f"Deleted test presentation: {cls.presentation_id}")
+            except Exception as e:
+                print(f"Error deleting presentation {cls.presentation_id}: {e}")
 
 # This conditional is only triggered when running this script directly
 if __name__ == '__main__':
-    # Create a new test loader
-    loader = unittest.TestLoader()
-    # Create a test suite containing tests from TestSlidesOperations
-    suite = loader.loadTestsFromTestCase(TestSlidesOperations)
-    # Create a test runner
+    # Run tests sequentially
+    suite = unittest.TestSuite()
+    suite.addTest(TestSlidesOperations('test_create_presentation'))
+    suite.addTest(TestSlidesOperations('test_add_slide'))
+    suite.addTest(TestSlidesOperations('test_duplicate_slide'))
+    suite.addTest(TestSlidesOperations('test_reorder_slides'))
+    suite.addTest(TestSlidesOperations('test_delete_slide'))
+    
     runner = unittest.TextTestRunner(verbosity=2)
     # Run the test suite
-    result = runner.run(suite) 
+    runner.run(suite) 

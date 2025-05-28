@@ -1,4 +1,4 @@
-from google_slides_llm_tools.auth import get_slides_service
+from google_slides_llm_tools.utils.auth import get_slides_service
 
 def slide_id_to_index(credentials, presentation_id, slide_id):
     """
@@ -47,23 +47,52 @@ def index_to_slide_id(credentials, presentation_id, slide_index):
     
     raise ValueError(f"Index {slide_index} out of range. Presentation has {len(slides)} slides.")
 
-def get_element_id_by_name(credentials, presentation_id, slide_id, element_name):
+def get_element_id_by_name(credentials, presentation_id, slide_id=None, element_name=None):
     """
     Finds the ID of an element by its name/alt text property.
     
     Args:
         credentials: Authorized Google credentials
         presentation_id (str): ID of the presentation
-        slide_id (str): ID of the slide
-        element_name (str): Name or alt text of the element to find
+        slide_id (str, optional): ID of the slide, if not provided will search all slides
+        element_name (str, optional): Name or alt text of the element to find
+                                    If not provided, will use the slide_id parameter as element_name
         
     Returns:
         str: ID of the element, or None if not found
     """
     service = get_slides_service(credentials)
     
+    # Handle case where function is called with just 3 parameters
+    if element_name is None and slide_id is not None:
+        element_name = slide_id
+        slide_id = None
+    
     presentation = service.presentations().get(
         presentationId=presentation_id).execute()
+    
+    # If no slide_id is provided, search all slides
+    if slide_id is None:
+        for slide in presentation.get('slides', []):
+            # Search for elements in the slide that match the name/content
+            for element in slide.get('pageElements', []):
+                element_id = element.get('objectId')
+                
+                # Check shape elements with text
+                if 'shape' in element and 'text' in element['shape']:
+                    text_content = ""
+                    for text_element in element['shape']['text'].get('textElements', []):
+                        if 'textRun' in text_element:
+                            text_content += text_element['textRun'].get('content', '')
+                    
+                    if element_name.lower() in text_content.lower():
+                        return element_id
+                
+                # Check if title matches element name
+                if element.get('title', '').lower() == element_name.lower():
+                    return element_id
+        
+        return None
     
     # Find the slide
     target_slide = None
@@ -89,10 +118,8 @@ def get_element_id_by_name(credentials, presentation_id, slide_id, element_name)
             if element_name.lower() in text_content.lower():
                 return element_id
         
-        # Check title/subtitle placeholders
-        if 'title' in element_id.lower() and element_name.lower() == 'title':
-            return element_id
-        if 'subtitle' in element_id.lower() and element_name.lower() == 'subtitle':
+        # Check if title matches element name
+        if element.get('title', '').lower() == element_name.lower():
             return element_id
     
     return None
@@ -149,7 +176,8 @@ def hex_to_rgb(hex_color):
 
 def points_to_emu(points):
     """
-    Converts points to EMU (English Metric Units) used by the Google Slides API.
+    Converts points to EMU (English Metric Units).
+    1 point = 12700 EMU
     
     Args:
         points (float): Value in points
@@ -157,12 +185,12 @@ def points_to_emu(points):
     Returns:
         int: Value in EMU
     """
-    # 1 point = 12700 EMU
     return int(points * 12700)
 
 def emu_to_points(emu):
     """
     Converts EMU (English Metric Units) to points.
+    1 EMU = 1/12700 points
     
     Args:
         emu (int): Value in EMU
@@ -170,19 +198,18 @@ def emu_to_points(emu):
     Returns:
         float: Value in points
     """
-    # 1 EMU = 1/12700 points
     return emu / 12700
 
 def get_page_size(credentials, presentation_id):
     """
-    Gets the page size of a presentation.
+    Gets the page size of a presentation in points.
     
     Args:
         credentials: Authorized Google credentials
         presentation_id (str): ID of the presentation
         
     Returns:
-        dict: Width and height of the presentation pages
+        dict: Dictionary with width and height in points
     """
     service = get_slides_service(credentials)
     
@@ -190,16 +217,22 @@ def get_page_size(credentials, presentation_id):
         presentationId=presentation_id).execute()
     
     page_size = presentation.get('pageSize', {})
-    width = page_size.get('width', {})
-    height = page_size.get('height', {})
+    
+    # Convert EMU to points if needed
+    width_data = page_size.get('width', {})
+    height_data = page_size.get('height', {})
+    
+    width = width_data.get('magnitude', 0)
+    height = height_data.get('magnitude', 0)
+    
+    # Check if units are EMU and convert to points if necessary
+    if width_data.get('unit') == 'EMU':
+        width = emu_to_points(width)
+    
+    if height_data.get('unit') == 'EMU':
+        height = emu_to_points(height)
     
     return {
-        'width': {
-            'magnitude': width.get('magnitude'),
-            'unit': width.get('unit')
-        },
-        'height': {
-            'magnitude': height.get('magnitude'),
-            'unit': height.get('unit')
-        }
+        'width': width,
+        'height': height
     } 

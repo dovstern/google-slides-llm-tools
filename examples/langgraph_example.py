@@ -13,7 +13,7 @@ from langgraph.prebuilt import create_react_agent
 from langgraph.graph import StateGraph, END
 from typing import Dict, TypedDict, List, Any, Optional
 
-from google_slides_llm_tools import get_langchain_tools
+from google_slides_llm_tools import get_langchain_tools, add_credentials_to_langchain_tool_call
 
 # Define the state schema
 class AgentState(TypedDict):
@@ -42,23 +42,8 @@ def main():
     tools = get_langchain_tools()
     
     # Create the ReAct agent using the prebuilt function
-    agent = create_react_agent(llm, tools)
-    
-    # Create a graph with the agent
-    workflow = StateGraph(AgentState)
-    
-    # Add the agent node to the graph
-    workflow.add_node("agent", agent)
-    
-    # Set the entry point for the graph
-    workflow.set_entry_point("agent")
-    
-    # Set the exit condition
-    workflow.add_edge("agent", END)
-    
-    # Compile the graph
-    app = workflow.compile()
-    
+    workflow = create_react_agent(llm, tools, post_model_hook=add_credentials_to_langchain_tool_call)
+        
     # Define the input with template presentation ID
     # You can set this to None if not using a template, or provide a valid presentation ID
     template_id = "your-template-presentation-id"  # Replace with actual ID or None
@@ -80,7 +65,7 @@ def main():
     
     # Run the agent with streaming output
     print("Running the ReAct agent...")
-    print_stream(app.stream(inputs))
+    print_stream(workflow.stream(inputs))
     
     print("\nAgent execution completed!")
 

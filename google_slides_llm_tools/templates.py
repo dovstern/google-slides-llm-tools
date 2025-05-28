@@ -1,32 +1,50 @@
-from google_slides_llm_tools.auth import get_slides_service, get_drive_service
-from langchain.tools import tool
+"""
+Templates module for Google Slides LLM Tools.
+Provides functionality to work with templates in Google Slides.
+"""
 import os
 import tempfile
 import time
+from typing import Annotated, Any, List, Optional, Dict, Tuple
 
-@tool
-def apply_predefined_layout(credentials, presentation_id, slide_id, layout_name):
+from google_slides_llm_tools.utils import get_slides_service, get_drive_service
+from google_slides_llm_tools.export import export_presentation_as_pdf, export_slide_as_pdf
+from langchain.tools import tool
+from langchain_core.tools import InjectedToolArg
+
+@tool(response_format="content_and_artifact")
+def apply_predefined_layout(
+    credentials: Annotated[Any, InjectedToolArg], 
+    presentation_id: Annotated[str, "ID of the presentation"], 
+    slide_id: Annotated[str, "ID of the slide"], 
+    layout_name: Annotated[str, "Name of the layout to apply"]
+) -> Annotated[Tuple[str, List[Dict[str, Any]]], "Tuple of (content message, artifacts) with response and PDFs"]:
     """
     Applies a predefined layout to a slide.
-    
-    Args:
-        credentials: Authorized Google credentials
-        presentation_id (str): ID of the presentation
-        slide_id (str): ID of the slide
-        layout_name (str): Name of the predefined layout (e.g., 'TITLE', 'TITLE_AND_BODY')
-        
-    Returns:
-        dict: Response from the API with paths to PDFs of the presentation and slide
     """
     service = get_slides_service(credentials)
     
-    # Create request to apply layout
+    # Get the presentation to find available layouts
+    presentation = service.presentations().get(
+        presentationId=presentation_id).execute()
+    
+    # Find the layout by name
+    layout_id = None
+    for layout in presentation.get('layouts', []):
+        if layout.get('layoutProperties', {}).get('displayName') == layout_name:
+            layout_id = layout.get('objectId')
+            break
+    
+    if not layout_id:
+        return f"Layout '{layout_name}' not found", []
+    
+    # Apply the layout to the slide
     requests = [
         {
             'updateSlideProperties': {
                 'objectId': slide_id,
                 'slideProperties': {
-                    'layoutObjectId': layout_name
+                    'layoutObjectId': layout_id
                 },
                 'fields': 'layoutObjectId'
             }
@@ -38,45 +56,29 @@ def apply_predefined_layout(credentials, presentation_id, slide_id, layout_name)
         presentationId=presentation_id, body=body).execute()
     
     # Get the slide index
-    presentation = service.presentations().get(
-        presentationId=presentation_id).execute()
-    
     slide_index = None
     for i, slide in enumerate(presentation.get('slides', [])):
         if slide.get('objectId') == slide_id:
             slide_index = i
             break
     
-    # Export presentation as PDF
-    from google_slides_llm_tools.export import export_presentation_as_pdf, export_slide_as_pdf
-    presentation_pdf_path = os.path.join(tempfile.gettempdir(), f"presentation_{presentation_id}.pdf")
-    export_presentation_as_pdf(credentials, presentation_id, presentation_pdf_path)
-    
-    # Export the specific slide as PDF if we found its index
-    slide_pdf_path = None
+    # Export only the specific slide as PDF since this operation affects only one slide
+    slide_artifacts = []
     if slide_index is not None:
-        slide_pdf_path = os.path.join(tempfile.gettempdir(), f"slide_{presentation_id}_{slide_index}.pdf")
-        export_slide_as_pdf(credentials, presentation_id, slide_index, slide_pdf_path)
+        _, slide_artifacts = export_slide_as_pdf(credentials, presentation_id, slide_index)
     
-    # Add PDF paths to the response
-    response["presentationPdfPath"] = presentation_pdf_path
-    if slide_pdf_path:
-        response["slidePdfPath"] = slide_pdf_path
+    content = f"Applied layout '{layout_name}' to slide {slide_id}"
     
-    return response
+    return content, slide_artifacts
 
-@tool
-def duplicate_presentation(credentials, presentation_id, new_title=None):
+@tool(response_format="content_and_artifact")
+def duplicate_presentation(
+    credentials: Annotated[Any, "Authorized Google credentials"], 
+    presentation_id: Annotated[str, "ID of the presentation to duplicate"], 
+    new_title: Annotated[Optional[str], "Title for the new presentation"] = None
+) -> Annotated[Tuple[str, List[Dict[str, Any]]], "Tuple of (content message, artifacts) with new presentation info and PDF"]:
     """
     Duplicates an existing presentation.
-    
-    Args:
-        credentials: Authorized Google credentials
-        presentation_id (str): ID of the presentation to duplicate
-        new_title (str, optional): Title for the new presentation
-        
-    Returns:
-        dict: Information about the new presentation, including ID and PDF path
     """
     drive_service = get_drive_service(credentials)
     
@@ -96,101 +98,123 @@ def duplicate_presentation(credentials, presentation_id, new_title=None):
     copied_presentation = drive_service.files().copy(
         fileId=presentation_id, body=body).execute()
     
-    # Export as PDF
-    from google_slides_llm_tools.export import export_presentation_as_pdf
-    pdf_path = os.path.join(tempfile.gettempdir(), f"presentation_{copied_presentation['id']}.pdf")
-    export_presentation_as_pdf(credentials, copied_presentation['id'], pdf_path)
+    # Export the new presentation as PDF
+    content, artifacts = export_presentation_as_pdf(credentials, copied_presentation['id'])
     
-    # Return information about the new presentation
-    result = {
-        "presentationId": copied_presentation['id'],
-        "title": new_title,
-        "pdfPath": pdf_path
-    }
-    
-    return result
+    return f"Duplicated presentation as '{new_title}' with ID {copied_presentation['id']}. {content}", artifacts
 
 @tool
-def list_available_layouts(credentials, presentation_id):
+def list_available_layouts(
+    credentials: Annotated[Any, InjectedToolArg], 
+    presentation_id: Annotated[str, "ID of the presentation"]
+) -> Annotated[List[Dict[str, str]], "List of available layouts with their IDs and names"]:
     """
     Lists all available layouts in a presentation.
-    
-    Args:
-        credentials: Authorized Google credentials
-        presentation_id (str): ID of the presentation
-        
-    Returns:
-        list: Available layouts in the presentation
     """
     service = get_slides_service(credentials)
     
-    # Get the presentation
+    # Get the presentation layouts
     presentation = service.presentations().get(
         presentationId=presentation_id).execute()
     
-    # Extract available layouts
     layouts = []
-    if 'layouts' in presentation:
-        for layout in presentation['layouts']:
-            layouts.append({
-                'objectId': layout['objectId'],
-                'layoutProperties': layout.get('layoutProperties', {})
-            })
+    for layout in presentation.get('layouts', []):
+        layout_info = {
+            'id': layout.get('objectId'),
+            'name': layout.get('layoutProperties', {}).get('displayName', 'Unnamed Layout')
+        }
+        layouts.append(layout_info)
     
     return layouts
 
-@tool
-def create_custom_template(credentials, title, slide_layouts=None):
+@tool(response_format="content_and_artifact")
+def create_custom_template(
+    credentials: Annotated[Any, InjectedToolArg], 
+    title: Annotated[str, "Title of the new template presentation"], 
+    template_slides: Annotated[List[Dict[str, Any]], "List of slide configurations for the template"]
+) -> Annotated[Tuple[str, List[Dict[str, Any]]], "Tuple of (content message, artifacts) with response and PDFs"]:
     """
-    Creates a new presentation to be used as a custom template.
-    
-    Args:
-        credentials: Authorized Google credentials
-        title (str): Title of the template
-        slide_layouts (list, optional): List of slide layout configurations to add
-        
-    Returns:
-        dict: Information about the new template, including ID and PDF path
+    Creates a custom template presentation with specified slide configurations.
     """
     service = get_slides_service(credentials)
     
     # Create a new presentation
-    body = {
+    presentation = {
         'title': title
     }
-    presentation = service.presentations().create(body=body).execute()
-    presentation_id = presentation['presentationId']
     
-    # Add custom slide layouts if provided
-    if slide_layouts:
-        requests = []
-        for layout in slide_layouts:
-            # Example: layout = {'layoutId': 'customLayout1', 'name': 'My Custom Layout'}
-            requests.append({
-                'createSlide': {
-                    'objectId': layout.get('layoutId', f'custom_{int(time.time())}'),
-                    'slideLayoutReference': {
-                        'predefinedLayout': 'BLANK'
-                    },
-                    'insertionIndex': 0
+    response = service.presentations().create(body=presentation).execute()
+    presentation_id = response['presentationId']
+    
+    # Get the default slide ID to remove it later
+    presentation_data = service.presentations().get(
+        presentationId=presentation_id).execute()
+    default_slide_id = presentation_data['slides'][0]['objectId']
+    
+    # Create requests for template slides
+    requests = []
+    
+    # Add new slides based on template_slides configuration
+    for i, slide_config in enumerate(template_slides):
+        slide_id = f'template_slide_{i}'
+        requests.append({
+            'createSlide': {
+                'objectId': slide_id,
+                'insertionIndex': i,
+                'slideLayoutReference': {
+                    'predefinedLayout': slide_config.get('layout', 'BLANK')
                 }
-            })
+            }
+        })
         
-        if requests:
-            body = {'requests': requests}
-            service.presentations().batchUpdate(
-                presentationId=presentation_id, body=body).execute()
+        # Add any text elements specified in the configuration
+        if 'text_elements' in slide_config:
+            for text_element in slide_config['text_elements']:
+                text_box_id = f'text_{slide_id}_{len(requests)}'
+                requests.append({
+                    'createShape': {
+                        'objectId': text_box_id,
+                        'shapeType': 'TEXT_BOX',
+                        'elementProperties': {
+                            'pageObjectId': slide_id,
+                            'size': {
+                                'height': {'magnitude': text_element.get('height', 100), 'unit': 'PT'},
+                                'width': {'magnitude': text_element.get('width', 400), 'unit': 'PT'},
+                            },
+                            'transform': {
+                                'scaleX': 1,
+                                'scaleY': 1,
+                                'translateX': text_element.get('x', 100),
+                                'translateY': text_element.get('y', 100),
+                                'unit': 'PT'
+                            }
+                        }
+                    }
+                })
+                
+                requests.append({
+                    'insertText': {
+                        'objectId': text_box_id,
+                        'text': text_element.get('text', '')
+                    }
+                })
     
-    # Export as PDF
-    from google_slides_llm_tools.export import export_presentation_as_pdf
-    pdf_path = os.path.join(tempfile.gettempdir(), f"presentation_{presentation_id}.pdf")
-    export_presentation_as_pdf(credentials, presentation_id, pdf_path)
+    # Remove the default slide
+    requests.append({
+        'deleteObject': {
+            'objectId': default_slide_id
+        }
+    })
     
-    # Return information about the new template
-    result = {
-        "presentationId": presentation_id,
-        "title": title,
-        "pdfPath": pdf_path
-    }
+    # Execute all requests
+    if requests:
+        body = {'requests': requests}
+        service.presentations().batchUpdate(
+            presentationId=presentation_id, body=body).execute()
     
-    return result 
+    # Export the template as PDF
+    _, presentation_artifacts = export_presentation_as_pdf(credentials, presentation_id)
+    
+    content = f"Created custom template '{title}' with {len(template_slides)} slides"
+    
+    return content, presentation_artifacts 

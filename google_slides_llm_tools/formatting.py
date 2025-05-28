@@ -1,30 +1,35 @@
-from google_slides_llm_tools.auth import get_slides_service
-import time
+"""
+Formatting module for Google Slides LLM Tools.
+Provides functionality for text and paragraph formatting.
+"""
 import os
 import tempfile
+import uuid
+import time
+from typing import Annotated, Any, Dict, List, Optional, Tuple, Literal
 
-def add_text_to_slide(credentials, presentation_id, slide_id, text, position=None):
+from langchain.tools import tool
+from langchain_core.tools import InjectedToolArg
+from google_slides_llm_tools.utils import get_slides_service
+from google_slides_llm_tools.export import export_presentation_as_pdf, export_slide_as_pdf
+from google_slides_llm_tools.utils import Position, TextStyle, ParagraphStyle
+
+@tool(response_format="content_and_artifact")
+def add_text_to_slide(
+    credentials: Annotated[Any, InjectedToolArg], 
+    presentation_id: Annotated[str, "ID of the presentation"], 
+    slide_id: Annotated[str, "ID of the slide"], 
+    text: Annotated[str, "Text content to add"], 
+    position: Annotated[Optional[Position], "Position and size of the text box with keys: x, y, width, height (in points)"] = None
+) -> Annotated[Tuple[str, List[Dict[str, Any]]], "Tuple of (content message, artifacts) with response and PDFs"]:
     """
     Adds text to a slide.
-    
-    Args:
-        credentials: Authorized Google credentials
-        presentation_id (str): ID of the presentation
-        slide_id (str): ID of the slide
-        text (str): Text content to add
-        position (dict, optional): Position and size of the text box. Format:
-            {
-                'x': float, # X coordinate (in points) of the text box's top-left corner
-                'y': float, # Y coordinate (in points) of the text box's top-left corner
-                'width': float, # Width of the text box (in points)
-                'height': float # Height of the text box (in points)
-            }
-            If None, a default text box will be created
-        
-    Returns:
-        dict: Response from the API with paths to PDFs of the presentation and the slide
     """
     service = get_slides_service(credentials)
+    
+    # Set default position if none provided
+    if position is None:
+        position = Position(x=100, y=100, width=400, height=100)
     
     # Generate a unique ID for the text box
     text_box_id = f'TextBox_{int(time.time())}'
@@ -38,14 +43,14 @@ def add_text_to_slide(credentials, presentation_id, slide_id, text, position=Non
                 'elementProperties': {
                     'pageObjectId': slide_id,
                     'size': {
-                        'height': {'magnitude': position['height'], 'unit': 'PT'},
-                        'width': {'magnitude': position['width'], 'unit': 'PT'},
+                        'height': {'magnitude': position.height, 'unit': 'PT'},
+                        'width': {'magnitude': position.width, 'unit': 'PT'},
                     },
                     'transform': {
                         'scaleX': 1,
                         'scaleY': 1,
-                        'translateX': position['x'],
-                        'translateY': position['y'],
+                        'translateX': position.x,
+                        'translateY': position.y,
                         'unit': 'PT'
                     }
                 }
@@ -73,45 +78,24 @@ def add_text_to_slide(credentials, presentation_id, slide_id, text, position=Non
             slide_index = i
             break
     
-    # Export presentation as PDF
-    from google_slides_llm_tools.export import export_presentation_as_pdf, export_slide_as_pdf
-    presentation_pdf_path = os.path.join(tempfile.gettempdir(), f"presentation_{presentation_id}.pdf")
-    export_presentation_as_pdf(credentials, presentation_id, presentation_pdf_path)
-    
-    # Export the specific slide as PDF if we found its index
-    slide_pdf_path = None
+    # Export only the specific slide as PDF since this operation affects only one slide
+    slide_artifacts = []
     if slide_index is not None:
-        slide_pdf_path = os.path.join(tempfile.gettempdir(), f"slide_{presentation_id}_{slide_index}.pdf")
-        export_slide_as_pdf(credentials, presentation_id, slide_index, slide_pdf_path)
+        _, slide_artifacts = export_slide_as_pdf(credentials, presentation_id, slide_index)
     
-    # Add PDF paths to the response
-    response["presentationPdfPath"] = presentation_pdf_path
-    if slide_pdf_path:
-        response["slidePdfPath"] = slide_pdf_path
+    content = f"Added text '{text}' to slide {slide_id}"
     
-    return response
+    return content, slide_artifacts
 
-def update_text_style(credentials, presentation_id, slide_object_id, text_style):
+@tool(response_format="content_and_artifact")
+def update_text_style(
+    credentials: Annotated[Any, InjectedToolArg], 
+    presentation_id: Annotated[str, "ID of the presentation"], 
+    slide_object_id: Annotated[str, "ID of the text box or shape containing the text"], 
+    text_style: Annotated[TextStyle, "Style to apply with keys: fontFamily, fontSize, bold, italic, underline, foregroundColor, backgroundColor"]
+) -> Annotated[Tuple[str, List[Dict[str, Any]]], "Tuple of (content message, artifacts) with response and PDFs"]:
     """
     Updates the style of text in a text box or shape.
-    
-    Args:
-        credentials: Authorized Google credentials
-        presentation_id (str): ID of the presentation
-        slide_object_id (str): ID of the text box or shape containing the text
-        text_style (dict): Style to apply to the text. Format:
-            {
-                'fontFamily': str, # e.g., 'Arial'
-                'fontSize': int, # Point size
-                'bold': bool,
-                'italic': bool,
-                'underline': bool,
-                'foregroundColor': dict, # RGB color for the text (e.g., {'red': 0, 'green': 0, 'blue': 0})
-                'backgroundColor': dict # RGB color for highlighting (e.g., {'red': 1, 'green': 1, 'blue': 0})
-            }
-        
-    Returns:
-        dict: Response from the API with paths to PDFs of the presentation and the slide
     """
     service = get_slides_service(credentials)
     
@@ -119,29 +103,33 @@ def update_text_style(credentials, presentation_id, slide_object_id, text_style)
     style = {}
     fields = []
     
-    if text_style['bold']:
+    if text_style.bold:
         style['bold'] = True
         fields.append('bold')
         
-    if text_style['italic']:
+    if text_style.italic:
         style['italic'] = True
         fields.append('italic')
         
-    if text_style['fontSize']:
+    if text_style.fontSize:
         style['fontSize'] = {
-            'magnitude': text_style['fontSize'],
+            'magnitude': text_style.fontSize,
             'unit': 'PT'
         }
         fields.append('fontSize')
         
-    if text_style['fontFamily']:
-        style['fontFamily'] = text_style['fontFamily']
+    if text_style.fontFamily:
+        style['fontFamily'] = text_style.fontFamily
         fields.append('fontFamily')
         
-    if text_style['foregroundColor']:
+    if text_style.foregroundColor:
         style['foregroundColor'] = {
             'opaqueColor': {
-                'rgbColor': text_style['foregroundColor']
+                'rgbColor': {
+                    'red': text_style.foregroundColor.red,
+                    'green': text_style.foregroundColor.green,
+                    'blue': text_style.foregroundColor.blue
+                }
             }
         }
         fields.append('foregroundColor')
@@ -174,47 +162,24 @@ def update_text_style(credentials, presentation_id, slide_object_id, text_style)
         if slide_index is not None:
             break
     
-    # Export presentation as PDF
-    from google_slides_llm_tools.export import export_presentation_as_pdf, export_slide_as_pdf
-    presentation_pdf_path = os.path.join(tempfile.gettempdir(), f"presentation_{presentation_id}.pdf")
-    export_presentation_as_pdf(credentials, presentation_id, presentation_pdf_path)
-    
-    # Export the specific slide as PDF if we found its index
-    slide_pdf_path = None
+    # Export only the specific slide as PDF since this operation affects only one slide
+    slide_artifacts = []
     if slide_index is not None:
-        slide_pdf_path = os.path.join(tempfile.gettempdir(), f"slide_{presentation_id}_{slide_index}.pdf")
-        export_slide_as_pdf(credentials, presentation_id, slide_index, slide_pdf_path)
+        _, slide_artifacts = export_slide_as_pdf(credentials, presentation_id, slide_index)
     
-    # Add PDF paths to the response
-    response["presentationPdfPath"] = presentation_pdf_path
-    if slide_pdf_path:
-        response["slidePdfPath"] = slide_pdf_path
+    content = f"Updated text style for object {slide_object_id}"
     
-    return response
+    return content, slide_artifacts
 
-def update_paragraph_style(credentials, presentation_id, slide_object_id, paragraph_style):
+@tool(response_format="content_and_artifact")
+def update_paragraph_style(
+    credentials: Annotated[Any, InjectedToolArg], 
+    presentation_id: Annotated[str, "ID of the presentation"], 
+    slide_object_id: Annotated[str, "ID of the text box or shape containing the text"], 
+    paragraph_style: Annotated[ParagraphStyle, "Style to apply with keys: alignment, lineSpacing, spaceAbove, spaceBelow, indentFirstLine, indentStart, indentEnd, direction, spacingMode"]
+) -> Annotated[Tuple[str, List[Dict[str, Any]]], "Tuple of (content message, artifacts) with response and PDFs"]:
     """
     Updates the paragraph style in a text box or shape.
-    
-    Args:
-        credentials: Authorized Google credentials
-        presentation_id (str): ID of the presentation
-        slide_object_id (str): ID of the text box or shape containing the text
-        paragraph_style (dict): Style to apply to the paragraph. Format:
-            {
-                'alignment': str, # 'START', 'CENTER', 'END', or 'JUSTIFIED'
-                'lineSpacing': int, # In percentage (e.g., 150 for 1.5 line spacing)
-                'spaceAbove': float, # Space above in points
-                'spaceBelow': float, # Space below in points
-                'indentFirstLine': float, # First line indent in points
-                'indentStart': float, # Left indent in points
-                'indentEnd': float, # Right indent in points
-                'direction': str, # 'LEFT_TO_RIGHT', 'RIGHT_TO_LEFT'
-                'spacingMode': str # 'NEVER_COLLAPSE' or 'COLLAPSE_LISTS'
-            }
-        
-    Returns:
-        dict: Response from the API with paths to PDFs of the presentation and the slide
     """
     service = get_slides_service(credentials)
     
@@ -222,48 +187,48 @@ def update_paragraph_style(credentials, presentation_id, slide_object_id, paragr
     style = {}
     fields = []
     
-    if paragraph_style['alignment']:
-        style['alignment'] = paragraph_style['alignment']
+    if paragraph_style.alignment:
+        style['alignment'] = paragraph_style.alignment
         fields.append('alignment')
         
-    if paragraph_style['lineSpacing']:
+    if paragraph_style.lineSpacing:
         style['lineSpacing'] = {
-            'magnitude': paragraph_style['lineSpacing'],
+            'magnitude': paragraph_style.lineSpacing,
             'unit': 'PERCENT'
         }
         fields.append('lineSpacing')
         
-    if paragraph_style['spaceAbove']:
+    if paragraph_style.spaceAbove:
         style['spaceAbove'] = {
-            'magnitude': paragraph_style['spaceAbove'],
+            'magnitude': paragraph_style.spaceAbove,
             'unit': 'PT'
         }
         fields.append('spaceAbove')
         
-    if paragraph_style['spaceBelow']:
+    if paragraph_style.spaceBelow:
         style['spaceBelow'] = {
-            'magnitude': paragraph_style['spaceBelow'],
+            'magnitude': paragraph_style.spaceBelow,
             'unit': 'PT'
         }
         fields.append('spaceBelow')
         
-    if paragraph_style['indentFirstLine']:
+    if paragraph_style.indentFirstLine:
         style['indentFirstLine'] = {
-            'magnitude': paragraph_style['indentFirstLine'],
+            'magnitude': paragraph_style.indentFirstLine,
             'unit': 'PT'
         }
         fields.append('indentFirstLine')
         
-    if paragraph_style['indentStart']:
+    if paragraph_style.indentStart:
         style['indentStart'] = {
-            'magnitude': paragraph_style['indentStart'],
+            'magnitude': paragraph_style.indentStart,
             'unit': 'PT'
         }
         fields.append('indentStart')
         
-    if paragraph_style['indentEnd']:
+    if paragraph_style.indentEnd:
         style['indentEnd'] = {
-            'magnitude': paragraph_style['indentEnd'],
+            'magnitude': paragraph_style.indentEnd,
             'unit': 'PT'
         }
         fields.append('indentEnd')
@@ -296,20 +261,12 @@ def update_paragraph_style(credentials, presentation_id, slide_object_id, paragr
         if slide_index is not None:
             break
     
-    # Export presentation as PDF
-    from google_slides_llm_tools.export import export_presentation_as_pdf, export_slide_as_pdf
-    presentation_pdf_path = os.path.join(tempfile.gettempdir(), f"presentation_{presentation_id}.pdf")
-    export_presentation_as_pdf(credentials, presentation_id, presentation_pdf_path)
     
     # Export the specific slide as PDF if we found its index
-    slide_pdf_path = None
+    slide_artifacts = []
     if slide_index is not None:
-        slide_pdf_path = os.path.join(tempfile.gettempdir(), f"slide_{presentation_id}_{slide_index}.pdf")
-        export_slide_as_pdf(credentials, presentation_id, slide_index, slide_pdf_path)
+        _, slide_artifacts = export_slide_as_pdf(credentials, presentation_id, slide_index)
     
-    # Add PDF paths to the response
-    response["presentationPdfPath"] = presentation_pdf_path
-    if slide_pdf_path:
-        response["slidePdfPath"] = slide_pdf_path
+    content = f"Updated paragraph style for object {slide_object_id}"
     
-    return response 
+    return content, slide_artifacts 

@@ -1,24 +1,26 @@
 """
 Slides operations module for Google Slides LLM Tools.
-Provides core functionality for creating and manipulating Google Slides presentations.
+Provides functionality to create, read, update, and delete slides and presentations.
 """
 
-import tempfile
 import os
+import tempfile
+import time
+from typing import Annotated, Any, Dict, List, Optional, Tuple, Union
 from googleapiclient.discovery import build
-from google_slides_llm_tools.auth import get_slides_service, get_drive_service
+from langchain.tools import tool
+from langchain_core.tools import InjectedToolArg
+from google_slides_llm_tools.utils import get_slides_service, get_drive_service
 from google_slides_llm_tools.export import export_presentation_as_pdf, export_slide_as_pdf
 
-def create_presentation(credentials, title):
+
+@tool(response_format="content_and_artifact")
+def create_presentation(
+    credentials: Annotated[Any, InjectedToolArg], 
+    title: Annotated[str, "Title of the new presentation"]
+) -> Annotated[Tuple[str, List[Dict[str, Any]]], "Tuple of (content message, artifact) with presentation info and PDF"]:
     """
     Create a new Google Slides presentation.
-    
-    Args:
-        credentials: Google credentials object.
-        title (str): Title of the new presentation.
-        
-    Returns:
-        dict: Dictionary containing the presentation ID and PDF path.
     """
     slides_service = get_slides_service(credentials)
     drive_service = get_drive_service(credentials)
@@ -32,39 +34,30 @@ def create_presentation(credentials, title):
     presentation_id = presentation.get('presentationId')
     
     # Export the presentation as PDF
-    pdf_path = export_presentation_as_pdf(credentials, presentation_id)
+    content, artifacts = export_presentation_as_pdf(credentials, presentation_id)
     
-    return {
-        'presentationId': presentation_id,
-        'pdfPath': pdf_path
-    }
+    return content, artifacts
 
-def get_presentation(credentials, presentation_id):
+@tool
+def get_presentation(
+    credentials: Annotated[Any, InjectedToolArg], 
+    presentation_id: Annotated[str, "ID of the presentation"]
+) -> Annotated[Dict[str, Any], "Presentation metadata"]:
     """
     Get information about a Google Slides presentation.
-    
-    Args:
-        credentials: Google credentials object.
-        presentation_id (str): ID of the presentation.
-        
-    Returns:
-        dict: Presentation metadata.
     """
     slides_service = get_slides_service(credentials)
     presentation = slides_service.presentations().get(presentationId=presentation_id).execute()
     return presentation
 
-def add_slide(credentials, presentation_id, layout="BLANK"):
+@tool(response_format="content_and_artifact")
+def add_slide(
+    credentials: Annotated[Any, InjectedToolArg], 
+    presentation_id: Annotated[str, "ID of the presentation"], 
+    layout: Annotated[str, "Layout type for the new slide"] = "BLANK"
+) -> Annotated[Tuple[str, List[Dict[str, Any]]], "Tuple of (content message, artifacts) with slide info and PDFs"]:
     """
     Add a new slide to a Google Slides presentation.
-    
-    Args:
-        credentials: Google credentials object.
-        presentation_id (str): ID of the presentation.
-        layout (str): Layout type for the new slide.
-        
-    Returns:
-        dict: Dictionary containing the slide ID and PDF paths.
     """
     slides_service = get_slides_service(credentials)
     
@@ -107,26 +100,22 @@ def add_slide(credentials, presentation_id, layout="BLANK"):
     slide_id = response.get('replies', [{}])[0].get('createSlide', {}).get('objectId')
     
     # Export presentation and slide as PDF
-    presentation_pdf = export_presentation_as_pdf(credentials, presentation_id)
-    slide_pdf = export_slide_as_pdf(credentials, presentation_id, 1)  # New slide is at index 1
+    _, presentation_artifacts = export_presentation_as_pdf(credentials, presentation_id)
+    _, slide_artifacts = export_slide_as_pdf(credentials, presentation_id, 1)  # New slide is at index 1
     
-    return {
-        'slideId': slide_id,
-        'presentationPdfPath': presentation_pdf,
-        'slidePdfPath': slide_pdf
-    }
+    content = f"Added new slide with ID {slide_id}"
+    artifacts = presentation_artifacts + slide_artifacts
+    
+    return content, artifacts
 
-def delete_slide(credentials, presentation_id, slide_id):
+@tool(response_format="content_and_artifact")
+def delete_slide(
+    credentials: Annotated[Any, InjectedToolArg], 
+    presentation_id: Annotated[str, "ID of the presentation"], 
+    slide_id: Annotated[str, "ID of the slide to delete"]
+) -> Annotated[Tuple[str, List[Dict[str, Any]]], "Tuple of (content message, artifacts) with success status and PDF"]:
     """
     Delete a slide from a Google Slides presentation.
-    
-    Args:
-        credentials: Google credentials object.
-        presentation_id (str): ID of the presentation.
-        slide_id (str): ID of the slide to delete.
-        
-    Returns:
-        dict: Dictionary containing success status and PDF path.
     """
     slides_service = get_slides_service(credentials)
     
@@ -144,64 +133,56 @@ def delete_slide(credentials, presentation_id, slide_id):
     ).execute()
     
     # Export the updated presentation as PDF
-    pdf_path = export_presentation_as_pdf(credentials, presentation_id)
+    content, artifacts = export_presentation_as_pdf(credentials, presentation_id)
     
-    return {
-        'success': True,
-        'pdfPath': pdf_path
-    }
+    return f"Deleted slide {slide_id}. {content}", artifacts
 
-def reorder_slides(credentials, presentation_id, slide_ids, insertion_index):
+@tool(response_format="content_and_artifact")
+def reorder_slides(
+    credentials: Annotated[Any, InjectedToolArg], 
+    presentation_id: Annotated[str, "ID of the presentation"], 
+    slide_ids: Annotated[List[str], "List of slide IDs to move"], 
+    insertion_index: Annotated[int, "Index to insert the slides at"]
+) -> Annotated[Tuple[str, List[Dict[str, Any]]], "Tuple of (content message, artifacts) with updated slide order and PDF"]:
     """
     Reorder slides in a Google Slides presentation.
-    
-    Args:
-        credentials: Google credentials object.
-        presentation_id (str): ID of the presentation.
-        slide_ids (list): List of slide IDs to reorder.
-        insertion_index (int): Index where to insert the slides.
-        
-    Returns:
-        dict: Dictionary containing success status and slide IDs.
     """
     slides_service = get_slides_service(credentials)
     
-    # Create requests for each slide to be moved
-    requests = []
-    for slide_id in slide_ids:
-        requests.append({
-            'updateSlidesPosition': {
-                'slideObjectIds': [slide_id],
-                'insertionIndex': insertion_index
-            }
-        })
+    # Request to reorder slides
+    requests = [{
+        'updateSlidesPosition': {
+            'slideObjectIds': slide_ids,
+            'insertionIndex': insertion_index
+        }
+    }]
     
     # Execute the request
-    response = slides_service.presentations().batchUpdate(
+    slides_service.presentations().batchUpdate(
         presentationId=presentation_id,
         body={'requests': requests}
     ).execute()
     
     # Export the updated presentation as PDF
-    pdf_path = export_presentation_as_pdf(credentials, presentation_id)
+    content, artifacts = export_presentation_as_pdf(credentials, presentation_id)
     
-    return {
-        'success': True,
-        'slideIds': slide_ids,
-        'pdfPath': pdf_path
-    }
+    # Get the updated list of slide IDs in order
+    presentation = slides_service.presentations().get(
+        presentationId=presentation_id
+    ).execute()
+    
+    updated_slide_ids = [slide.get('objectId') for slide in presentation.get('slides', [])]
+    
+    return f"Reordered slides. New order: {updated_slide_ids}. {content}", artifacts
 
-def duplicate_slide(credentials, presentation_id, slide_id):
+@tool(response_format="content_and_artifact")
+def duplicate_slide(
+    credentials: Annotated[Any, InjectedToolArg], 
+    presentation_id: Annotated[str, "ID of the presentation"], 
+    slide_id: Annotated[str, "ID of the slide to duplicate"]
+) -> Annotated[Tuple[str, List[Dict[str, Any]]], "Tuple of (content message, artifacts) with new slide info and PDFs"]:
     """
     Duplicate a slide in a Google Slides presentation.
-    
-    Args:
-        credentials: Google credentials object.
-        presentation_id (str): ID of the presentation.
-        slide_id (str): ID of the slide to duplicate.
-        
-    Returns:
-        dict: Dictionary containing the new slide ID and PDF paths.
     """
     slides_service = get_slides_service(credentials)
     
@@ -235,7 +216,7 @@ def duplicate_slide(credentials, presentation_id, slide_id):
     new_slide_id = response.get('replies', [{}])[0].get('duplicateObject', {}).get('objectId')
     
     # Export presentation and the new slide as PDF
-    presentation_pdf = export_presentation_as_pdf(credentials, presentation_id)
+    _, presentation_artifacts = export_presentation_as_pdf(credentials, presentation_id)
     
     # Find the index of the new slide
     presentation = slides_service.presentations().get(
@@ -248,12 +229,11 @@ def duplicate_slide(credentials, presentation_id, slide_id):
             new_slide_index = i
             break
     
-    slide_pdf = None
+    slide_artifacts = []
     if new_slide_index is not None:
-        slide_pdf = export_slide_as_pdf(credentials, presentation_id, new_slide_index)
+        _, slide_artifacts = export_slide_as_pdf(credentials, presentation_id, new_slide_index)
     
-    return {
-        'slideId': new_slide_id,
-        'presentationPdfPath': presentation_pdf,
-        'slidePdfPath': slide_pdf
-    }
+    content = f"Duplicated slide {slide_id} to new slide {new_slide_id}"
+    artifacts = presentation_artifacts + slide_artifacts
+    
+    return content, artifacts

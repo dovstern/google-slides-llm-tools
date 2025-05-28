@@ -1,29 +1,30 @@
-from google_slides_llm_tools.auth import get_slides_service, get_sheets_service
-from langchain.tools import tool
-import time
+"""
+Data module for Google Slides LLM Tools.
+Provides functionality to create charts and tables from Google Sheets data.
+"""
+
 import os
 import tempfile
+import time
+from typing import Annotated, Any, Dict, List, Optional, Tuple, Union
 
-@tool
-def create_sheets_chart(credentials, presentation_id, slide_id, spreadsheet_id, sheet_id, chart_id, x, y, width, height):
-    """
-    Inserts a chart from Google Sheets into a slide.
-    
-    Args:
-        credentials: Authorized Google credentials
-        presentation_id (str): ID of the presentation
-        slide_id (str): ID of the slide
-        spreadsheet_id (str): ID of the spreadsheet containing the chart
-        sheet_id (int): ID of the sheet containing the chart
-        chart_id (int): ID of the chart to insert
-        x (float): X coordinate (in points) of the chart's top-left corner
-        y (float): Y coordinate (in points) of the chart's top-left corner
-        width (float): Width of the chart (in points)
-        height (float): Height of the chart (in points)
-        
-    Returns:
-        dict: Response from the API with paths to PDFs of the presentation and slide
-    """
+from langchain.tools import tool
+from langchain_core.tools import InjectedToolArg
+from google_slides_llm_tools.utils import get_slides_service, get_sheets_service
+from google_slides_llm_tools.utils import Position
+from google_slides_llm_tools.export import export_slide_as_pdf
+
+@tool(response_format="content_and_artifact")
+def create_sheets_chart(
+    credentials: Annotated[Any, InjectedToolArg],
+    presentation_id: Annotated[str, "ID of the presentation"],
+    slide_id: Annotated[str, "ID of the slide"],
+    spreadsheet_id: Annotated[str, "ID of the spreadsheet containing the chart"],
+    sheet_id: Annotated[int, "ID of the sheet containing the chart"],
+    chart_id: Annotated[int, "ID of the chart to insert"],
+    position: Annotated[Position, "Position and size of the chart with x, y coordinates and width, height"]
+) -> Annotated[Tuple[str, List[Dict[str, Any]]], "Tuple of (content message, artifacts) with response and PDFs"]:
+    """Inserts a chart from Google Sheets into a slide."""
     service = get_slides_service(credentials)
     
     # Generate a unique ID for the chart
@@ -40,14 +41,14 @@ def create_sheets_chart(credentials, presentation_id, slide_id, spreadsheet_id, 
                 'elementProperties': {
                     'pageObjectId': slide_id,
                     'size': {
-                        'height': {'magnitude': height, 'unit': 'PT'},
-                        'width': {'magnitude': width, 'unit': 'PT'},
+                        'height': {'magnitude': position.height, 'unit': 'PT'},
+                        'width': {'magnitude': position.width, 'unit': 'PT'},
                     },
                     'transform': {
                         'scaleX': 1,
                         'scaleY': 1,
-                        'translateX': x,
-                        'translateY': y,
+                        'translateX': position.x,
+                        'translateY': position.y,
                         'unit': 'PT'
                     }
                 }
@@ -69,44 +70,26 @@ def create_sheets_chart(credentials, presentation_id, slide_id, spreadsheet_id, 
             slide_index = i
             break
     
-    # Export presentation as PDF
-    from google_slides_llm_tools.export import export_presentation_as_pdf, export_slide_as_pdf
-    presentation_pdf_path = os.path.join(tempfile.gettempdir(), f"presentation_{presentation_id}.pdf")
-    export_presentation_as_pdf(credentials, presentation_id, presentation_pdf_path)
-    
-    # Export the specific slide as PDF if we found its index
-    slide_pdf_path = None
+    # Export only the specific slide as PDF since this operation affects only one slide
+    slide_artifacts = []
     if slide_index is not None:
-        slide_pdf_path = os.path.join(tempfile.gettempdir(), f"slide_{presentation_id}_{slide_index}.pdf")
-        export_slide_as_pdf(credentials, presentation_id, slide_index, slide_pdf_path)
+        _, slide_artifacts = export_slide_as_pdf(credentials, presentation_id, slide_index)
     
-    # Add PDF paths to the response
-    response["presentationPdfPath"] = presentation_pdf_path
-    if slide_pdf_path:
-        response["slidePdfPath"] = slide_pdf_path
+    content = f"Added chart from spreadsheet {spreadsheet_id} to slide {slide_id}"
     
-    return response
+    return content, slide_artifacts
 
-@tool
-def create_table_from_sheets(credentials, presentation_id, slide_id, spreadsheet_id, sheet_name, range_name, x, y, width, height):
-    """
-    Creates a table in a slide using data from Google Sheets.
-    
-    Args:
-        credentials: Authorized Google credentials
-        presentation_id (str): ID of the presentation
-        slide_id (str): ID of the slide
-        spreadsheet_id (str): ID of the spreadsheet
-        sheet_name (str): Name of the sheet
-        range_name (str): Range of cells to import (e.g., 'A1:D10')
-        x (float): X coordinate (in points) of the table's top-left corner
-        y (float): Y coordinate (in points) of the table's top-left corner
-        width (float): Width of the table (in points)
-        height (float): Height of the table (in points)
-        
-    Returns:
-        dict: Response from the API with paths to PDFs of the presentation and slide
-    """
+@tool(response_format="content_and_artifact")
+def create_table_from_sheets(
+    credentials: Annotated[Any, InjectedToolArg],
+    presentation_id: Annotated[str, "ID of the presentation"],
+    slide_id: Annotated[str, "ID of the slide"],
+    spreadsheet_id: Annotated[str, "ID of the spreadsheet"],
+    sheet_name: Annotated[str, "Name of the sheet"],
+    range_name: Annotated[str, "Range of cells to import (e.g., 'A1:D10')"],
+    position: Annotated[Position, "Position and size of the table with x, y coordinates and width, height"]
+) -> Annotated[Tuple[str, List[Dict[str, Any]]], "Tuple of (content message, artifacts) with response and PDFs"]:
+    """Creates a table in a slide using data from Google Sheets."""
     slides_service = get_slides_service(credentials)
     sheets_service = get_sheets_service(credentials)
     
@@ -119,7 +102,7 @@ def create_table_from_sheets(credentials, presentation_id, slide_id, spreadsheet
     
     values = sheet_data.get('values', [])
     if not values:
-        return {"error": "No data found in the specified range"}
+        return "No data found in the specified range", []
     
     # Generate a unique ID for the table
     table_id = f'Table_{int(time.time())}'
@@ -138,14 +121,14 @@ def create_table_from_sheets(credentials, presentation_id, slide_id, spreadsheet
                 'elementProperties': {
                     'pageObjectId': slide_id,
                     'size': {
-                        'height': {'magnitude': height, 'unit': 'PT'},
-                        'width': {'magnitude': width, 'unit': 'PT'},
+                        'height': {'magnitude': position.height, 'unit': 'PT'},
+                        'width': {'magnitude': position.width, 'unit': 'PT'},
                     },
                     'transform': {
                         'scaleX': 1,
                         'scaleY': 1,
-                        'translateX': x,
-                        'translateY': y,
+                        'translateX': position.x,
+                        'translateY': position.y,
                         'unit': 'PT'
                     }
                 }
@@ -189,20 +172,89 @@ def create_table_from_sheets(credentials, presentation_id, slide_id, spreadsheet
             slide_index = i
             break
     
-    # Export presentation as PDF
-    from google_slides_llm_tools.export import export_presentation_as_pdf, export_slide_as_pdf
-    presentation_pdf_path = os.path.join(tempfile.gettempdir(), f"presentation_{presentation_id}.pdf")
-    export_presentation_as_pdf(credentials, presentation_id, presentation_pdf_path)
-    
-    # Export the specific slide as PDF if we found its index
-    slide_pdf_path = None
+    # Export only the specific slide as PDF since this operation affects only one slide
+    slide_artifacts = []
     if slide_index is not None:
-        slide_pdf_path = os.path.join(tempfile.gettempdir(), f"slide_{presentation_id}_{slide_index}.pdf")
-        export_slide_as_pdf(credentials, presentation_id, slide_index, slide_pdf_path)
+        _, slide_artifacts = export_slide_as_pdf(credentials, presentation_id, slide_index)
     
-    # Add PDF paths to the response
-    response["presentationPdfPath"] = presentation_pdf_path
-    if slide_pdf_path:
-        response["slidePdfPath"] = slide_pdf_path
+    content = f"Created table from {sheet_name}!{range_name} on slide {slide_id}"
     
-    return response 
+    return content, slide_artifacts
+
+@tool
+def get_slide_data(
+    credentials: Annotated[Any, InjectedToolArg], 
+    presentation_id: Annotated[str, "ID of the presentation"], 
+    slide_id: Annotated[str, "ID of the slide to get data for"]
+) -> Annotated[dict, "Slide data including object ID and page elements"]:
+    """
+    Retrieves detailed data for a specific slide in a presentation.
+    """
+    service = get_slides_service(credentials)
+    
+    # Get the presentation but only fetch the slides data we need
+    presentation = service.presentations().get(
+        presentationId=presentation_id,
+        fields="slides(objectId,pageElements)"
+    ).execute()
+    
+    # Find the slide with the matching ID
+    for slide in presentation.get('slides', []):
+        if slide.get('objectId') == slide_id:
+            return slide
+    
+    # If no matching slide is found, return an empty dict
+    return {}
+
+@tool
+def get_presentation_data(
+    credentials: Annotated[Any, InjectedToolArg], 
+    presentation_id: Annotated[str, "ID of the presentation"]
+) -> Annotated[dict, "Full presentation data"]:
+    """
+    Retrieves detailed data for an entire presentation.
+    """
+    service = get_slides_service(credentials)
+    
+    # Get the complete presentation data
+    presentation = service.presentations().get(
+        presentationId=presentation_id
+    ).execute()
+    
+    return presentation
+
+@tool
+def find_element_ids(
+    credentials: Annotated[Any, InjectedToolArg], 
+    presentation_id: Annotated[str, "ID of the presentation"], 
+    search_string: Annotated[str, "Text to search for in elements"]
+) -> Annotated[list, "IDs of elements containing the search string"]:
+    """
+    Finds IDs of elements containing specific text across all slides.
+    """
+    service = get_slides_service(credentials)
+    
+    # Get the presentation with specific fields to optimize the API request
+    presentation = service.presentations().get(
+        presentationId=presentation_id,
+        fields="slides(objectId,pageElements(objectId,shape(text)))"
+    ).execute()
+    
+    matching_element_ids = []
+    
+    # Search through all slides and their elements
+    for slide in presentation.get('slides', []):
+        for element in slide.get('pageElements', []):
+            # Check if the element is a shape with text
+            if 'shape' in element and 'text' in element['shape']:
+                # Extract all text from textRuns
+                text_content = ""
+                for text_element in element['shape']['text'].get('textElements', []):
+                    if 'textRun' in text_element:
+                        text_content += text_element['textRun'].get('content', '')
+                
+                # If the search string is in the text content, add the element ID to results
+                if search_string.lower() in text_content.lower():
+                    matching_element_ids.append(element.get('objectId'))
+    
+    return matching_element_ids 

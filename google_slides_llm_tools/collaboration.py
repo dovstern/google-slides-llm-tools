@@ -1,18 +1,21 @@
-from google_slides_llm_tools.auth import get_drive_service
+"""
+Collaboration module for Google Slides LLM Tools.
+Provides functionality to manage permissions and sharing for presentations.
+"""
+
+from typing import Annotated, Any, Dict, List, Optional, Union
+from google_slides_llm_tools.utils import get_drive_service
 from langchain.tools import tool
+from langchain_core.tools import InjectedToolArg
 
 @tool
-def add_editor_permission(credentials, presentation_id, email):
+def add_editor_permission(
+    credentials: Annotated[str, "Authorized Google credentials"], 
+    presentation_id: Annotated[str, "ID of the presentation"], 
+    email: Annotated[str, "Email address of the user to grant access"]
+) -> Annotated[dict, "Response from the API"]:
     """
     Gives editor permission to a user for a presentation.
-    
-    Args:
-        credentials: Authorized Google credentials
-        presentation_id (str): ID of the presentation
-        email (str): Email address of the user to grant access
-        
-    Returns:
-        dict: Response from the API
     """
     drive_service = get_drive_service(credentials)
     
@@ -34,17 +37,13 @@ def add_editor_permission(credentials, presentation_id, email):
     }
 
 @tool
-def add_viewer_permission(credentials, presentation_id, email):
+def add_viewer_permission(
+    credentials: Annotated[str, "Authorized Google credentials"], 
+    presentation_id: Annotated[str, "ID of the presentation"], 
+    email: Annotated[str, "Email address of the user to grant access"]
+) -> Annotated[dict, "Response from the API"]:
     """
     Gives viewer permission to a user for a presentation.
-    
-    Args:
-        credentials: Authorized Google credentials
-        presentation_id (str): ID of the presentation
-        email (str): Email address of the user to grant access
-        
-    Returns:
-        dict: Response from the API
     """
     drive_service = get_drive_service(credentials)
     
@@ -66,21 +65,17 @@ def add_viewer_permission(credentials, presentation_id, email):
     }
 
 @tool
-def add_commenter_permission(credentials, presentation_id, email):
+def add_commenter_permission(
+    credentials: Annotated[Any, InjectedToolArg], 
+    presentation_id: Annotated[str, "ID of the presentation"], 
+    email: Annotated[str, "Email address of the user to grant comment permission"]
+) -> Annotated[Dict[str, str], "Response containing permission details"]:
     """
-    Gives commenter permission to a user for a presentation.
-    
-    Args:
-        credentials: Authorized Google credentials
-        presentation_id (str): ID of the presentation
-        email (str): Email address of the user to grant access
-        
-    Returns:
-        dict: Response from the API
+    Grants comment permission to a user for a presentation.
     """
     drive_service = get_drive_service(credentials)
     
-    user_permission = {
+    permission = {
         'type': 'user',
         'role': 'commenter',
         'emailAddress': email
@@ -88,27 +83,24 @@ def add_commenter_permission(credentials, presentation_id, email):
     
     response = drive_service.permissions().create(
         fileId=presentation_id,
-        body=user_permission,
+        body=permission,
         sendNotificationEmail=True
     ).execute()
     
     return {
-        "permissionId": response['id'],
-        "message": f"Commenter permission granted to {email}"
+        "permissionId": response.get('id'),
+        "email": email,
+        "role": "commenter"
     }
 
 @tool
-def remove_permission(credentials, presentation_id, permission_id):
+def remove_permission(
+    credentials: Annotated[str, "Authorized Google credentials"], 
+    presentation_id: Annotated[str, "ID of the presentation"], 
+    permission_id: Annotated[str, "ID of the permission to remove"]
+) -> Annotated[dict, "Success message"]:
     """
     Removes access permission for a user from a presentation.
-    
-    Args:
-        credentials: Authorized Google credentials
-        presentation_id (str): ID of the presentation
-        permission_id (str): ID of the permission to remove
-        
-    Returns:
-        dict: Success message
     """
     drive_service = get_drive_service(credentials)
     
@@ -122,16 +114,12 @@ def remove_permission(credentials, presentation_id, permission_id):
     }
 
 @tool
-def list_permissions(credentials, presentation_id):
+def list_permissions(
+    credentials: Annotated[str, "Authorized Google credentials"], 
+    presentation_id: Annotated[str, "ID of the presentation"]
+) -> Annotated[list, "All permissions for the presentation"]:
     """
     Lists all permissions for a presentation.
-    
-    Args:
-        credentials: Authorized Google credentials
-        presentation_id (str): ID of the presentation
-        
-    Returns:
-        list: All permissions for the presentation
     """
     drive_service = get_drive_service(credentials)
     
@@ -143,40 +131,28 @@ def list_permissions(credentials, presentation_id):
     return response.get('permissions', [])
 
 @tool
-def make_public(credentials, presentation_id, role='reader'):
+def make_public(
+    credentials: Annotated[Any, InjectedToolArg], 
+    presentation_id: Annotated[str, "ID of the presentation"], 
+    role: Annotated[str, "Role to grant ('reader', 'commenter', or 'writer')"] = "reader"
+) -> Annotated[Dict[str, str], "Response containing permission details"]:
     """
-    Makes a presentation publicly accessible.
-    
-    Args:
-        credentials: Authorized Google credentials
-        presentation_id (str): ID of the presentation
-        role (str, optional): Role to assign. Options: 'reader', 'commenter', 'writer'
-        
-    Returns:
-        dict: Response from the API with the public link
+    Makes a presentation publicly accessible with the specified role.
     """
     drive_service = get_drive_service(credentials)
     
-    # Create public permission
     permission = {
         'type': 'anyone',
         'role': role
     }
     
-    result = drive_service.permissions().create(
+    response = drive_service.permissions().create(
         fileId=presentation_id,
         body=permission
     ).execute()
     
-    # Get the file to obtain the webViewLink
-    file = drive_service.files().get(
-        fileId=presentation_id,
-        fields='webViewLink'
-    ).execute()
-    
     return {
-        "permissionId": result['id'],
-        "role": role,
-        "link": file['webViewLink'],
-        "message": f"Presentation is now public with {role} access"
+        "permissionId": response.get('id'),
+        "type": "anyone",
+        "role": role
     } 

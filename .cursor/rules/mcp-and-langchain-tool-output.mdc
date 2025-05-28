@@ -1,0 +1,54 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+
+# Your rule content
+Please see [README.md](mdc:README.md) for background on this project - we are implementing both langchain tools and MCP server.
+
+# Langchain tool implementation
+Langchain tools should be implemented using with annotated args, a description docstring, etc.
+@tool
+def multiply_by_max(
+    a: Annotated[int, "scale factor"],
+    b: Annotated[List[int], "list of ints over which to take maximum"],
+) -> int:
+    """Multiply a by the maximum of b."""
+    return a * max(b)
+
+# Converting langchain tools to MCP tools
+Langchain and MCP have different tool conventions (documentation, annotations, and returning images/pdfs).
+To convert a langchain tool to an MCP tool, just use `langchain_to_mcp_tool_adapter.add_langchain_tool_to_server` from the langchain_to_mcp_tool_adapter package, i.e.
+```python
+from langchain_to_mcp_tool_adapter import add_langchain_tool_to_server
+add_langchain_tool_to_server(server, langchain_tool)
+```
+This will ensure that the Langchain Tool is fully interoperable with MCP.
+
+## Langchain tool expected output
+
+For langchain tools, to return pdf or images, we need to specify `response_format="content_and_artifact"` when defining our tool and make sure that we return a tuple of (content, artifacts). 
+i.e. 
+```python
+content = "Here is the pdf of the slide requested."
+artifacts = [{
+    "type": "file",
+    "file": {
+        "filename": "slide10.pdf",
+        "file_data": f"data:application/pdf;base64,{base64_string}",
+    }
+}]
+return content, artifacts
+```
+and in the tool definition
+```
+generic_get_slide_tool = Tool(
+    name="generic_get_slide",
+    description="Generic tool example for getting a particular slide in the presentation.",
+    func=lambda presentation_id: generic_get_slide(authenticate(), presentation_id),
+    response_format="content_and_artifact"
+)
+
+```
+See more (here)[https://python.langchain.com/docs/how_to/tool_artifacts/]
